@@ -98,7 +98,9 @@ OPENAI_MODEL=gpt-4o-mini
 - Do NOT make AI mandatory — the product must work WITHOUT any LLM API
 - Do NOT add Redis, Celery, or background processing unless there's a demonstrated need
 - Do NOT create microservices or new infrastructure
+- Do NOT introduce new infrastructure, asynchronous workers, LLM dependencies, embeddings, or architectural layers unless explicitly required
 - Do NOT modify existing routers that Dev 2 created
+- **Implement the simplest version that satisfies the contract.** If a simpler implementation works, prefer it.
 
 ### SHARED DOMAIN MODEL (YOU USE THIS SAME MODEL)
 
