@@ -3,9 +3,13 @@ T2 Bug Tracker — Authentication Module
 
 Verifies Supabase JWT tokens and extracts authenticated user context.
 Used by Dev 2's endpoints as a FastAPI dependency.
+
+Supports both ES256 (ECDSA P-256) and RS256 (RSA) tokens.
+Supabase currently uses ES256 by default.
 """
 
 import os
+import time
 from functools import lru_cache
 from typing import Optional
 
@@ -21,22 +25,29 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 SUPABASE_JWKS_URL = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else ""
+SUPABASE_JWT_ISSUER = f"{SUPABASE_URL}/auth/v1" if SUPABASE_URL else ""
 
 # Token scheme — extracts Bearer token from Authorization header
 security = HTTPBearer(auto_error=False)
 
+# Accepted algorithms — Supabase uses ES256 (ECDSA P-256) by default
+ACCEPTED_ALGORITHMS = ["ES256", "RS256"]
 
 # ============================================================
 # JWKS Caching (Supabase signs JWTs with rotating keys)
 # ============================================================
 
 _jwks_cache: Optional[dict] = None
+_jwks_cache_time: float = 0.0
+_JWKS_CACHE_TTL_SECONDS = 3600  # Re-fetch JWKS every hour
 
 
-async def _fetch_jwks() -> dict:
-    """Fetch JWKS from Supabase, with in-memory caching."""
-    global _jwks_cache
-    if _jwks_cache is not None:
+async def _fetch_jwks(force_refresh: bool = False) -> dict:
+    """Fetch JWKS from Supabase, with time-based caching."""
+    global _jwks_cache, _jwks_cache_time
+
+    now = time.time()
+    if _jwks_cache is not None and not force_refresh and (now - _jwks_cache_time) < _JWKS_CACHE_TTL_SECONDS:
         return _jwks_cache
 
     if not SUPABASE_JWKS_URL:
@@ -49,11 +60,17 @@ async def _fetch_jwks() -> dict:
         response = await client.get(SUPABASE_JWKS_URL, timeout=10.0)
         response.raise_for_status()
         _jwks_cache = response.json()
+        _jwks_cache_time = now
         return _jwks_cache
 
 
-def _get_signing_key(jwks: dict, token_header: dict) -> str:
-    """Extract the signing key from JWKS for the given token header."""
+def _get_signing_key(jwks: dict, token_header: dict):
+    """
+    Extract the signing key from JWKS for the given token header.
+
+    Supports both RSA (RS256) and EC (ES256) key types.
+    Supabase currently uses ES256 (ECDSA P-256) by default.
+    """
     kid = token_header.get("kid")
     if not kid:
         raise HTTPException(
@@ -63,8 +80,19 @@ def _get_signing_key(jwks: dict, token_header: dict) -> str:
 
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
-            # Return the key as a jwt.PyJWK for PyJWT compatibility
-            return jwt.algorithms.RSAAlgorithm.from_jwk(key)
+            kty = key.get("kty", "")
+
+            if kty == "EC":
+                # ES256 — ECDSA P-256 (Supabase default)
+                return jwt.algorithms.ECAlgorithm.from_jwk(key)
+            elif kty == "RSA":
+                # RS256 — RSA
+                return jwt.algorithms.RSAAlgorithm.from_jwk(key)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"Unsupported key type: {kty}",
+                )
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,7 +117,7 @@ async def verify_supabase_token(token: str) -> dict:
       - role
     """
     try:
-        # Decode header to get kid
+        # Decode header to get kid and alg
         unverified_header = jwt.get_unverified_header(token)
     except jwt.DecodeError:
         raise HTTPException(
@@ -102,18 +130,23 @@ async def verify_supabase_token(token: str) -> dict:
     signing_key = _get_signing_key(jwks, unverified_header)
 
     try:
+        decode_options = {
+            "verify_exp": True,
+            "verify_aud": True,
+            "require": ["exp", "sub", "aud"],
+        }
+
+        # Validate issuer if configured
         payload = jwt.decode(
             token,
             signing_key,
-            algorithms=["RS256"],
+            algorithms=ACCEPTED_ALGORITHMS,
             audience="authenticated",
-            options={
-                "verify_exp": True,
-                "verify_aud": True,
-                "require": ["exp", "sub", "aud"],
-            },
+            issuer=SUPABASE_JWT_ISSUER if SUPABASE_JWT_ISSUER else None,
+            options=decode_options,
         )
         return payload
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -124,6 +157,30 @@ async def verify_supabase_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token audience",
         )
+    except jwt.InvalidIssuerError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token issuer",
+        )
+    except jwt.InvalidSignatureError:
+        # Key might have rotated — refresh JWKS and retry once
+        try:
+            jwks_fresh = await _fetch_jwks(force_refresh=True)
+            signing_key_fresh = _get_signing_key(jwks_fresh, unverified_header)
+            payload = jwt.decode(
+                token,
+                signing_key_fresh,
+                algorithms=ACCEPTED_ALGORITHMS,
+                audience="authenticated",
+                issuer=SUPABASE_JWT_ISSUER if SUPABASE_JWT_ISSUER else None,
+                options=decode_options,
+            )
+            return payload
+        except (jwt.InvalidSignatureError, jwt.InvalidTokenError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token signature",
+            )
     except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
