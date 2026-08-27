@@ -51,12 +51,21 @@ def health_check():
 
 
 # ============================================================
-# NOTE: Do NOT add routers here.
-# Dev 2 owns all API routers and adds them in their branch.
-# Dev 2 should import and register routers like:
-#
-#   from .routers import bugs, projects, auth
-#   app.include_router(bugs.router)
-#   app.include_router(projects.router)
-#   app.include_router(auth.router)
+# API Routers
 # ============================================================
+
+from .routers.projects import router as projects_router
+from .routers.bugs import router as bugs_router
+from .routers.comments import router as comments_router
+from .routers.components import router as components_router
+from .routers.members import router as members_router
+from .routers.relationships import router as relationships_router
+from .routers.dashboard import router as dashboard_router
+
+app.include_router(projects_router)
+app.include_router(bugs_router)
+app.include_router(comments_router)
+app.include_router(components_router)
+app.include_router(members_router)
+app.include_router(relationships_router)
+app.include_router(dashboard_router)
