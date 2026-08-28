@@ -23,7 +23,7 @@ export default function SignupPage() {
       setError(error.message)
       return
     }
-    router.push('/dashboard')
+    router.push('/')
   }
 
   return (
