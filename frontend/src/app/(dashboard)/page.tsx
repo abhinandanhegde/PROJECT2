@@ -92,20 +92,22 @@ export default function DashboardPage() {
       }
     })
 
-    // Try fetching real dashboard stats
+    // Fetch real dashboard stats from backend
     api
       .getDashboardStats()
       .then((res) => {
         if (res && res.total_bugs_reported !== undefined) {
-          setStats((prev) => ({
-            ...prev,
-            openIssues: res.open_assigned || prev.openIssues,
-            p1Issues: res.bugs_by_severity?.['CRITICAL'] || res.bugs_by_severity?.['BLOCKER'] || prev.p1Issues,
-          }))
+          const sev = res.bugs_by_severity || {}
+          setStats({
+            openIssues: res.open_assigned || 0,
+            p1Issues: (sev['CRITICAL'] || 0) + (sev['BLOCKER'] || 0),
+            unassigned: res.total_bugs_assigned ? Math.max(0, res.total_bugs_assigned - res.open_assigned) : 0,
+            blocked: res.recent_activity_count || 0,
+          })
         }
       })
       .catch(() => {
-        // Fallback gracefully to high fidelity demo data
+        // Keep mock data as fallback if API unavailable
       })
   }, [])
 

@@ -4,7 +4,6 @@ Shared helper utilities used across routers.
 Provides role checking, activity logging, and common query patterns.
 """
 
-import json
 from typing import Optional
 from app.exceptions import AuthorizationError
 

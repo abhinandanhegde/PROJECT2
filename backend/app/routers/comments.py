@@ -52,7 +52,7 @@ async def list_comments(
     db = auth["db"]
     offset = (page - 1) * per_page
     result = (
-        db.table("comments").select("*", count="exact")
+        db.table("comments").select("*, users:author_id(display_name, email)", count="exact")
         .eq("bug_id", bug_id)
         .order("created_at", desc=False)
         .range(offset, offset + per_page - 1)

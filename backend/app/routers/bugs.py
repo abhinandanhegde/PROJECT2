@@ -75,7 +75,7 @@ async def list_bugs(
     user = auth["user"]
     require_project_role(db, project_id, user["id"])
 
-    query = db.table("bugs").select("*", count="exact").eq("project_id", project_id)
+    query = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)", count="exact").eq("project_id", project_id)
 
     if status:
         query = query.eq("status", status)
@@ -111,7 +111,7 @@ async def get_bug(
     db = auth["db"]
     user = auth["user"]
     require_project_role(db, project_id, user["id"])
-    result = db.table("bugs").select("*").eq("id", bug_id).eq("project_id", project_id).execute()
+    result = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)").eq("id", bug_id).eq("project_id", project_id).execute()
     if not result.data:
         raise NotFoundError("Bug not found")
     return result.data[0]

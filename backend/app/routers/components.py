@@ -18,7 +18,7 @@ async def create_component(
 ):
     user = auth["user"]
     db = auth["db"]
-    require_project_role(db, project_id, user["id"], min_role="ADMIN")
+    require_project_role(db, project_id, user["id"], min_role="DEVELOPER")
 
     result = db.table("components").insert({
         "project_id": project_id,
