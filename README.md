@@ -1,93 +1,352 @@
-# T2 Bug Tracker
+# BugFlow
 
-A modern developer bug-tracking platform inspired by Bugzilla, built with Next.js, FastAPI, and Supabase PostgreSQL.
+> A modern developer bug-tracking platform with intelligent triage, deterministic duplicate detection, and role-based security — built in 3 days for CloneFest hackathon.
+
+**Live Demo:** [bugflow.vercel.app](https://bugflow.vercel.app) · **API Docs:** [bugflow-api.up.railway.app/docs](https://bugflow-api.up.railway.app/docs)
+
+---
+
+## What It Does
+
+BugFlow tracks software bugs from report to resolution with a full lifecycle state machine, project-level access control, and AI-free intelligence features.
+
+| Feature | How It Works |
+|---------|-------------|
+| **Bug Lifecycle** | 7-state machine: NEW → CONFIRMED → IN_PROGRESS → RESOLVED → VERIFIED → CLOSED (+ REOPENED) |
+| **Intelligent Triage** | Keyword-based severity/priority suggestion with confidence scoring — no LLM needed |
+| **Duplicate Detection** | PostgreSQL pg_trgm trigram similarity + Jaccard fallback — finds similar bugs in <100ms |
+| **Risk Analysis** | 7-factor weighted scoring (severity, priority, age, status, reopens, staleness, assignment) |
+| **Role-Based Access** | 4-tier project roles: REPORTER → DEVELOPER → QA → ADMIN with RLS enforcement |
+| **Full Audit Trail** | Every mutation logged with actor identity, old/new values, timestamps |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Browser (Next.js)                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
+│  │ Auth UI  │  │Dashboard │  │ Bug CRUD │  │Search   │ │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬────┘ │
+│       └──────────────┴──────────────┴──────────────┘     │
+│                          │ Bearer JWT                    │
+└──────────────────────────┼──────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────┐
+│                    FastAPI Backend                        │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
+│  │Auth (ES256)│ │Projects │  │   Bugs   │  │Intel.   │ │
+│  │JWKS Verify │ │Members  │  │Comments  │  │Triage   │ │
+│  └──────────┘  │Components│  │Relations │  │Dupes    │ │
+│                 └──────────┘  └──────────┘  │Risk     │ │
+│                                              └─────────┘ │
+│                          │                               │
+│              User-context client (RLS enforced)          │
+└──────────────────────────┼──────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────┐
+│               Supabase PostgreSQL                        │
+│  ┌─────┐ ┌──────┐ ┌─────┐ ┌────────┐ ┌──────────────┐  │
+│  │Users│ │Bugs  │ │Rls  │ │pg_trgm │ │activity_log  │  │
+│  │     │ │      │ │policies│ │extension│ │(audit trail) │  │
+│  └─────┘ └──────┘ └─────┘ └────────┘ └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Tech Stack
+
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 | App Router, server components, type safety |
+| Backend | Python 3.10+, FastAPI, Pydantic v2, Uvicorn | Async, auto-docs, validation |
+| Database | Supabase PostgreSQL | Managed Postgres + Auth + RLS |
+| Auth | Supabase Auth + ES256 JWT | JWKS verification, no custom auth |
+| Intelligence | pg_trgm, Python heuristics | Zero AI dependency, deterministic |
 
 ## Project Structure
 
 ```
 T2/
-├── frontend/          # Next.js 15 + TypeScript + Tailwind CSS
-├── backend/           # Python FastAPI + Uvicorn
-├── database/          # Database schema + migrations
-├── scripts/           # Seed data, utilities
-├── docs/              # Architecture, API contract, and role guides
-│   ├── architecture.md
-│   ├── api-contract.md
-│   └── roles/         # ← AI prompts for each developer role
-│       ├── dev1-database-security.md
-│       ├── dev2-backend-api.md
-│       ├── dev3-frontend-product.md
-│       └── dev4-integration-intelligence.md
-├── .env.example
-├── .gitignore
-└── README.md
+├── frontend/                    # Next.js 15 application
+│   ├── src/
+│   │   ├── app/                 # App Router pages
+│   │   │   ├── (auth)/          # Login, Signup
+│   │   │   └── (dashboard)/     # Dashboard, Bugs, Search, etc.
+│   │   ├── components/          # Reusable UI components
+│   │   ├── lib/                 # API client, auth, types
+│   │   └── hooks/               # Custom React hooks
+│   └── package.json
+│
+├── backend/                     # FastAPI application
+│   ├── app/
+│   │   ├── auth.py              # JWT verification (ES256/RS256)
+│   │   ├── dependencies.py      # FastAPI dependency injection
+│   │   ├── supabase_client.py   # Service-role + user-context clients
+│   │   ├── helpers.py           # Role checking, activity logging
+│   │   ├── middleware.py        # Security headers, request ID
+│   │   ├── exceptions.py        # Custom error classes
+│   │   ├── routers/             # API endpoints (8 routers)
+│   │   └── models/              # Pydantic request/response schemas
+│   └── requirements.txt
+│
+├── database/                    # SQL migrations (apply in order)
+│   ├── schema.sql               # Tables, enums, indexes
+│   ├── rls.sql                  # Row-Level Security policies
+│   ├── auth_trigger.sql         # Supabase Auth → users sync
+│   ├── audit_function.sql       # log_activity() function
+│   └── project_creation.sql     # Atomic project + admin creation
+│
+├── scripts/
+│   └── seed.py                  # Database seeder (5 users, 3 projects, 42 bugs)
+│
+└── tests/
+    └── e2e/                     # Integration tests (23 tests)
 ```
-
-## Prerequisites
-
-- Node.js ≥ 18
-- npm ≥ 9
-- Python ≥ 3.10
-- pip
-- Supabase account (for database + auth)
 
 ## Quick Start
 
-### Frontend
+### Prerequisites
 
-```bash
-cd frontend
-npm install
-npm run dev
-# → http://localhost:3000
-```
+- Node.js ≥ 18
+- Python ≥ 3.10
+- Supabase account ([free tier works](https://supabase.com))
 
-### Backend
+### 1. Database Setup
+
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**
+2. Run these files **in order**:
+   ```sql
+   -- 1. schema.sql
+   -- 2. rls.sql
+   -- 3. auth_trigger.sql
+   -- 4. audit_function.sql
+   -- 5. project_creation.sql
+   ```
+
+### 2. Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-# → http://localhost:8000
+
+# Create .env file
+cat > .env << 'EOF'
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+EOF
+
+# Start server
+uvicorn app.main:app --reload --port 8000
+# → http://localhost:8000/docs (Swagger UI)
 ```
 
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in your values. See `.env.example` for the full list.
-
-## Branching Workflow
+### 3. Frontend
 
 ```bash
-git checkout -b feat/security      # Dev 1: Database + Security
-git checkout -b feat/backend       # Dev 2: Backend/API
-git checkout -b feat/frontend      # Dev 3: Frontend/Product
-git checkout -b feat/integration   # Dev 4: Integration + Intelligence
+cd frontend
+npm install
+
+# Create .env.local
+cat > .env.local << 'EOF'
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+EOF
+
+# Start dev server
+npm run dev
+# → http://localhost:3000
 ```
 
-- Never push directly to `main`
-- Pull/rebase from `main` before starting major work
-- Open a PR before merging
-- Never commit secrets
+### 4. Seed Data (Optional)
 
-## Role Guides (AI Prompts)
+```bash
+cd backend
+python -m scripts.seed
+# Creates: 5 users, 3 projects, 42 bugs, comments, relationships, activity
+```
 
-Each team member has a copy-paste prompt in `docs/roles/`. Open the file matching your role, copy everything between `## START PROMPT` and `## END PROMPT`, and paste it into your AI tool.
+## API Endpoints
 
-| Role | File | Branch | Owns |
-|------|------|--------|------|
-| Dev 1: Database + Security | `docs/roles/dev1-database-security.md` | `feat/security` | Schema, RLS, Auth, Audit |
-| Dev 2: Backend/API | `docs/roles/dev2-backend-api.md` | `feat/backend` | Endpoints, Business Logic |
-| Dev 3: Frontend/Product | `docs/roles/dev3-frontend-product.md` | `feat/frontend` | UI, UX, Product |
-| Dev 4: Integration + Intelligence | `docs/roles/dev4-integration-intelligence.md` | `feat/integration` | Triage, Duplicates, Risk, CI |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| **Projects** | | |
+| `GET` | `/api/projects` | List user's projects |
+| `POST` | `/api/projects` | Create project (auto-adds creator as ADMIN) |
+| `GET` | `/api/projects/{id}` | Get project details |
+| `PUT` | `/api/projects/{id}` | Update project (ADMIN) |
+| `DELETE` | `/api/projects/{id}` | Delete project (ADMIN) |
+| `GET` | `/api/projects/{id}/stats` | Project statistics |
+| **Bugs** | | |
+| `GET` | `/api/projects/{id}/bugs` | List bugs (filter, sort, paginate) |
+| `POST` | `/api/projects/{id}/bugs` | Create bug |
+| `GET` | `/api/projects/{id}/bugs/{id}` | Get bug details |
+| `PUT` | `/api/projects/{id}/bugs/{id}` | Update bug |
+| `PATCH` | `/api/projects/{id}/bugs/{id}/status` | Change bug status |
+| `PATCH` | `/api/projects/{id}/bugs/{id}/assign` | Assign bug |
+| `GET` | `/api/bugs/search?q=...` | Global search |
+| **Comments** | | |
+| `GET` | `/api/bugs/{id}/comments` | List comments |
+| `POST` | `/api/bugs/{id}/comments` | Add comment |
+| `PUT` | `/api/bugs/{id}/comments/{id}` | Edit comment |
+| `DELETE` | `/api/bugs/{id}/comments/{id}` | Delete comment |
+| **Intelligence** | | |
+| `POST` | `/api/intelligence/projects/{id}/bugs/triage` | Get triage suggestion |
+| `POST` | `/api/intelligence/projects/{id}/bugs/duplicates` | Find duplicate bugs |
+| `POST` | `/api/intelligence/projects/{id}/bugs/risk` | Analyze bug risk |
+| **Other** | | |
+| `GET` | `/api/projects/{id}/members` | List project members |
+| `POST` | `/api/projects/{id}/members` | Add member (ADMIN) |
+| `GET` | `/api/projects/{id}/components` | List components |
+| `GET` | `/api/dashboard/stats` | Dashboard statistics |
+| `GET` | `/api/dashboard/recent` | Recent activity |
 
-## Tech Stack
+Full interactive docs at `http://localhost:8000/docs`.
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 |
-| Backend | Python 3.10+, FastAPI, Uvicorn, Pydantic v2 |
-| Database | Supabase PostgreSQL |
-| Auth | Supabase Auth |
-| Hosting | Vercel (frontend), Railway (backend) |
+## Security Architecture
+
+### Authentication Flow
+
+```
+Browser → Supabase Auth (signup/login) → JWT access token
+       → Authorization: Bearer <token> → FastAPI
+       → JWKS verification (ES256/RS256) → Authenticated user
+       → Supabase client with user's JWT → PostgreSQL RLS enforced
+```
+
+### Key Security Features
+
+| Feature | Implementation |
+|---------|---------------|
+| **JWT Verification** | JWKS-based ES256/RS256 with auto key rotation |
+| **Row-Level Security** | Policies on all 11 tables — users can only see their projects |
+| **Service-Role Isolation** | Service-role client ONLY for admin ops — never for user requests |
+| **Security Headers** | X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store |
+| **Request IDs** | Every request gets unique X-Request-ID for tracing |
+| **Audit Trail** | SECURITY DEFINER function validates actor_id = auth.uid() |
+| **Input Validation** | Pydantic v2 schemas on all endpoints |
+
+### Role Hierarchy
+
+```
+REPORTER (least) → DEVELOPER → QA → ADMIN (most)
+```
+
+| Action | REPORTER | DEVELOPER | QA | ADMIN |
+|--------|----------|-----------|-----|-------|
+| View bugs | ✅ | ✅ | ✅ | ✅ |
+| Create bugs | ✅ | ✅ | ✅ | ✅ |
+| Update own bugs | ✅ | ✅ | ✅ | ✅ |
+| Update any bug | ❌ | ✅ | ✅ | ✅ |
+| Change status | ❌ | ✅ | ✅ | ✅ |
+| Assign bugs | ❌ | ✅ | ✅ | ✅ |
+| Manage members | ❌ | ❌ | ❌ | ✅ |
+| Delete bugs | ❌ | ❌ | ❌ | ✅ |
+
+## Intelligence Engine
+
+**Zero AI. Zero LLM. Zero external APIs.**
+
+### Triage
+
+Keyword-based severity/priority suggestion with confidence scoring:
+
+```json
+POST /api/intelligence/projects/{id}/bugs/triage
+{
+  "title": "Application crashes on login",
+  "description": "Unhandled exception when user session expires...",
+  "severity": "BLOCKER",
+  "priority": "P1"
+}
+
+Response:
+{
+  "suggested_severity": "BLOCKER",
+  "suggested_priority": "P1",
+  "confidence": 0.92,
+  "reasons": ["Keyword analysis suggests BLOCKER", "Reporter severity ≥ engine suggestion"],
+  "signals": ["Detected: crash, data loss, security"]
+}
+```
+
+### Duplicate Detection
+
+PostgreSQL pg_trgm trigram similarity with Jaccard fallback:
+
+```json
+POST /api/intelligence/projects/{id}/bugs/duplicates
+{
+  "title": "Login page crashes",
+  "threshold": 0.3,
+  "limit": 5
+}
+
+Response:
+{
+  "candidates": [
+    { "bug_id": "...", "title": "App crashes on login", "similarity": 0.87, "match_type": "title_trgm" }
+  ]
+}
+```
+
+### Risk Analysis
+
+7-factor weighted scoring (0-100):
+
+| Factor | Weight | What It Measures |
+|--------|--------|-----------------|
+| Severity | 25 | Bug severity level |
+| Priority | 15 | Business priority |
+| Age | 15 | Days since creation |
+| Status Blockage | 15 | Stuck in NEW/CONFIRMED/REOPENED |
+| Reopen Count | 15 | How many times reopened |
+| Activity Staleness | 10 | Days since last update |
+| No Assignee | 5 | Unassigned = higher risk |
+
+## Database Schema
+
+11 tables with proper foreign keys, indexes, and constraints:
+
+| Table | Records | Purpose |
+|-------|---------|---------|
+| `users` | Synced from Auth | User profiles |
+| `projects` | User-created | Bug tracking projects |
+| `project_members` | Per-project | Role-based membership |
+| `components` | Per-project | Bug categorization |
+| `bugs` | Core entity | Bug reports with lifecycle |
+| `comments` | Per-bug | Discussion threads |
+| `attachments` | Per-bug | File uploads |
+| `relationships` | Cross-bug | blocks, depends_on, related_to |
+| `activity_log` | Audit trail | Every mutation logged |
+| `notifications` | Per-user | Alert system |
+| `saved_searches` | Per-user | Custom filters |
+
+## Testing
+
+```bash
+cd backend
+pytest tests/ -v
+# 23 tests: auth, intelligence, project isolation
+```
+
+## Team
+
+| Role | Developer | Responsibility |
+|------|-----------|---------------|
+| Dev 1 | Abhinandan | Database schema, RLS, auth, security |
+| Dev 2 | Pavan | Backend API, business logic, endpoints |
+| Dev 3 | Alok | Frontend UI, auth pages, product design |
+| Dev 4 | — | Intelligence engine, seed data, integration tests |
+
+## License
+
+MIT
+
+---
+
+Built with ❤️ for CloneFest hackathon
