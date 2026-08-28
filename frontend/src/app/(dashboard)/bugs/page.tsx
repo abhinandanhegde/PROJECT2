@@ -376,7 +376,7 @@ function BugsContent() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold ${getSeverityBadge(
+                        className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${getSeverityBadge(
                           bug.severity
                         )}`}
                       >
@@ -385,7 +385,7 @@ function BugsContent() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[11px] ${getPriorityBadge(
+                        className={`inline-block px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(
                           bug.priority
                         )}`}
                       >
@@ -394,7 +394,7 @@ function BugsContent() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium ${getStatusBadge(
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(
                           bug.status
                         )}`}
                       >
@@ -403,7 +403,7 @@ function BugsContent() {
                     </td>
                     <td className="py-3.5 px-4 text-stone-600 dark:text-stone-400">
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-[10px] font-bold text-stone-600 dark:text-stone-300">
+                        <div className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-600 dark:text-stone-300">
                           {(bug.assignee_name || 'U').charAt(0)}
                         </div>
                         <span>{bug.assignee_name || 'Unassigned'}</span>
@@ -430,7 +430,7 @@ function BugsContent() {
                     <Link href={`/bugs/${bug.id}`}>{bug.id}</Link>
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getStatusBadge(
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(
                       bug.status
                     )}`}
                   >
@@ -444,20 +444,20 @@ function BugsContent() {
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-semibold ${getSeverityBadge(
+                    className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityBadge(
                       bug.severity
                     )}`}
                   >
                     {bug.severity}
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] ${getPriorityBadge(
+                    className={`px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(
                       bug.priority
                     )}`}
                   >
                     {bug.priority}
                   </span>
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400 ml-auto">
+                  <span className="text-xs text-stone-500 dark:text-stone-400 ml-auto">
                     {bug.assignee_name || 'Unassigned'}
                   </span>
                 </div>

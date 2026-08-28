@@ -8,8 +8,12 @@ import {
   DashboardIcon,
   IssuesIcon,
   TriageIcon,
-  PlusIcon,
-  SearchIcon,
+  GraphIcon,
+  AnalyticsIcon,
+  ReportsIcon,
+  ProjectsIcon,
+  TeamsIcon,
+  SettingsIcon,
   ChevronDownIcon,
   XIcon,
 } from '@/components/ui/Icons'
@@ -45,8 +49,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
     { label: 'Triage', href: '/bugs?status=NEW', icon: TriageIcon, badge: '12' },
-    { label: 'New Bug', href: '/bugs/new', icon: PlusIcon },
-    { label: 'Search', href: '/search', icon: SearchIcon },
+    { label: 'Graph', href: '/graph', icon: GraphIcon },
+    { label: 'Analytics', href: '/analytics', icon: AnalyticsIcon },
+    { label: 'Reports', href: '/reports', icon: ReportsIcon },
+    { label: 'Projects', href: '/projects', icon: ProjectsIcon },
+    { label: 'Teams', href: '/teams', icon: TeamsIcon },
+    { label: 'Settings', href: '/settings', icon: SettingsIcon },
   ]
 
   const sidebarContent = (
@@ -62,7 +70,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               <div className="font-bold text-lg text-stone-900 dark:text-white tracking-tight leading-none">
                 BugFlow
               </div>
-              <div className="text-[11px] text-stone-400 dark:text-stone-500 font-medium tracking-wide mt-1">
+              <div className="text-xs text-stone-400 dark:text-stone-500 font-medium tracking-wide mt-1">
                 Track • Triage • Resolve
               </div>
             </div>
@@ -142,7 +150,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               <div className="text-xs font-semibold text-stone-900 dark:text-white line-clamp-1">
                 {userName}
               </div>
-              <div className="text-[11px] text-stone-400 dark:text-stone-500">
+              <div className="text-xs text-stone-400 dark:text-stone-500">
                 {userRole}
               </div>
             </div>

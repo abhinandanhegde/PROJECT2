@@ -193,7 +193,7 @@ function SearchContent() {
                 <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400 group-hover:underline">
                   {bug.id}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
                   {bug.status}
                 </span>
               </div>

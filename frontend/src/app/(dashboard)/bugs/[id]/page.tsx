@@ -359,7 +359,7 @@ export default function BugDetailPage({
                 <div className="font-bold text-stone-900 dark:text-white mt-1">
                   {f.score} / {f.weight} pts
                 </div>
-                <div className="text-[10px] text-stone-500 mt-0.5">{f.description}</div>
+                <div className="text-xs text-stone-500 mt-0.5">{f.description}</div>
               </div>
             ))}
           </div>
@@ -390,7 +390,7 @@ export default function BugDetailPage({
                   <span className="font-semibold text-stone-900 dark:text-white">
                     {comment.author_name || 'User'}
                   </span>
-                  <span className="text-[11px] text-stone-400">
+                  <span className="text-xs text-stone-400">
                     {new Date(comment.created_at).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',

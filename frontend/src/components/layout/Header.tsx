@@ -108,7 +108,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
             className="w-full pl-10 pr-12 py-2 text-sm bg-stone-100/80 dark:bg-stone-800/80 border border-transparent focus:border-orange-500/40 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 text-stone-900 dark:text-stone-100 placeholder-stone-400 transition-all"
           />
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-medium text-stone-400 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded">
+            <kbd className="px-1.5 py-0.5 text-xs font-mono font-medium text-stone-400 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded">
               ⌘K
             </kbd>
           </div>
@@ -178,7 +178,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
                 <div className="text-xs font-bold text-stone-900 dark:text-white truncate">
                   {userName}
                 </div>
-                <div className="text-[11px] text-stone-400 truncate mt-0.5">
+                <div className="text-xs text-stone-400 truncate mt-0.5">
                   {userEmail || 'alex.johnson@company.com'}
                 </div>
               </div>

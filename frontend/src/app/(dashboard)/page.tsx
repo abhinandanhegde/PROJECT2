@@ -387,7 +387,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Table Header */}
-            <div className="grid grid-cols-12 text-[11px] font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider pb-3 border-b border-stone-100 dark:border-stone-800">
+            <div className="grid grid-cols-12 text-xs font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider pb-3 border-b border-stone-100 dark:border-stone-800">
               <div className="col-span-6 sm:col-span-5">Issue</div>
               <div className="col-span-2 text-center">Priority</div>
               <div className="col-span-4 sm:col-span-3">Assignee</div>
@@ -411,7 +411,7 @@ export default function DashboardPage() {
                     <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
                       <Link href={`/bugs/${item.id}`}>{item.title}</Link>
                     </div>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
                       {item.component}
                     </span>
                   </div>
@@ -429,7 +429,7 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="col-span-4 sm:col-span-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-[10px] font-semibold text-stone-600 dark:text-stone-300">
+                    <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-xs font-semibold text-stone-600 dark:text-stone-300">
                       {item.assignee ? item.assignee.name.charAt(0) : '?'}
                     </div>
                     <span className="text-xs font-medium text-stone-700 dark:text-stone-300 truncate">
@@ -529,7 +529,7 @@ export default function DashboardPage() {
                   <span className="text-base font-bold text-stone-900 dark:text-white leading-none">
                     72%
                   </span>
-                  <span className="text-[10px] text-stone-400 font-medium mt-0.5">
+                  <span className="text-xs text-stone-400 font-medium mt-0.5">
                     Healthy
                   </span>
                 </div>
@@ -576,7 +576,7 @@ export default function DashboardPage() {
                 Recent Activity
               </h2>
               <Link
-                href="/bugs"
+                href="/analytics"
                 className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
               >
                 View all
@@ -598,7 +598,7 @@ export default function DashboardPage() {
                       </span>
                     </p>
                   </div>
-                  <span className="text-[11px] text-stone-400 whitespace-nowrap">
+                  <span className="text-xs text-stone-400 whitespace-nowrap">
                     {act.timeAgo}
                   </span>
                 </div>
@@ -617,7 +617,7 @@ export default function DashboardPage() {
               Component Health
             </h2>
             <Link
-              href="/bugs"
+              href="/reports"
               className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
             >
               View all
@@ -635,11 +635,11 @@ export default function DashboardPage() {
                     style={{ width: `${comp.percentage}%` }}
                   />
                 </div>
-                <div className="text-[11px] text-stone-400 whitespace-nowrap w-16 text-right">
+                <div className="text-xs text-stone-400 whitespace-nowrap w-16 text-right">
                   {comp.issues} issues
                 </div>
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  className={`px-2 py-0.5 rounded text-xs font-bold ${
                     comp.riskLevel === 'High'
                       ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
                       : comp.riskLevel === 'Medium'
@@ -678,7 +678,7 @@ export default function DashboardPage() {
                     {item.title}
                   </div>
                 </div>
-                <span className="text-stone-400 dark:text-stone-500 whitespace-nowrap text-[11px] mt-0.5">
+                <span className="text-stone-400 dark:text-stone-500 whitespace-nowrap text-xs mt-0.5">
                   {item.days}
                 </span>
               </div>
@@ -693,7 +693,7 @@ export default function DashboardPage() {
               Top Assignees
             </h2>
             <Link
-              href="/bugs"
+              href="/teams"
               className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
             >
               View all
@@ -703,14 +703,14 @@ export default function DashboardPage() {
             {topAssignees.map((a) => (
               <div key={a.name} className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 w-28 truncate">
-                  <div className="w-5 h-5 rounded-full bg-stone-700 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                  <div className="w-5 h-5 rounded-full bg-stone-700 text-white flex items-center justify-center text-xs font-bold shrink-0">
                     {a.name.charAt(0)}
                   </div>
                   <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
                     {a.name}
                   </span>
                 </div>
-                <span className="text-[11px] text-stone-400 whitespace-nowrap">
+                <span className="text-xs text-stone-400 whitespace-nowrap">
                   {a.issues} issues
                 </span>
                 <div className="flex-1 h-1.5 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">

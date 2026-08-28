@@ -216,7 +216,7 @@ export default function NewBugPage() {
                 <div className="flex items-center gap-2 text-xs font-bold text-orange-800 dark:text-orange-300">
                   <SparklesIcon className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                   <span>Deterministic Triage Suggestion</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-orange-200/60 dark:bg-orange-900/60 font-mono">
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-orange-200/60 dark:bg-orange-900/60 font-mono">
                     {Math.round(triageSuggestion.confidence * 100)}% confidence
                   </span>
                 </div>
@@ -239,7 +239,7 @@ export default function NewBugPage() {
                 </div>
               </div>
               {triageSuggestion.reasons?.length > 0 && (
-                <div className="text-[11px] text-orange-700 dark:text-orange-400 mt-1.5 opacity-90">
+                <div className="text-xs text-orange-700 dark:text-orange-400 mt-1.5 opacity-90">
                   Reason: {triageSuggestion.reasons.join(', ')}
                 </div>
               )}
