@@ -334,15 +334,6 @@ pytest tests/ -v
 # 23 tests: auth, intelligence, project isolation
 ```
 
-## Team
-
-| Role | Developer | Responsibility |
-|------|-----------|---------------|
-| Dev 1 | Abhinandan | Database schema, RLS, auth, security |
-| Dev 2 | Pavan | Backend API, business logic, endpoints |
-| Dev 3 | Alok | Frontend UI, auth pages, product design |
-| Dev 4 | — | Intelligence engine, seed data, integration tests |
-
 ## License
 
 MIT
