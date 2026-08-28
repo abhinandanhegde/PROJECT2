@@ -5,22 +5,21 @@ export async function signIn(email: string, password: string) {
     email,
     password,
   })
-  if (error) throw error
-  return data
+  return { data, error }
 }
 
-export async function signUp(email: string, password: string) {
+export async function signUp(email: string, password: string, displayName?: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: displayName ? { data: { display_name: displayName } } : undefined,
   })
-  if (error) throw error
-  return data
+  return { data, error }
 }
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  return { error }
 }
 
 export async function getSession() {

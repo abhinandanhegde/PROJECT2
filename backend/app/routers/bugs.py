@@ -220,7 +220,7 @@ async def assign_bug(
 ):
     user = auth["user"]
     db = auth["db"]
-    require_project_role(db, project_id, user["id"])
+    require_project_role(db, project_id, user["id"], min_role="DEVELOPER")
     _validate_assignee(db, project_id, body.assignee_id)
 
     existing = db.table("bugs").select("assignee_id").eq("id", bug_id).eq("project_id", project_id).execute()

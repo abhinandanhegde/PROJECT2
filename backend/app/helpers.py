@@ -31,7 +31,7 @@ def get_user_project_role(db, project_id: str, user_id: str) -> Optional[str]:
 
 
 def require_project_role(
-    db, project_id: str, user_id: str, min_role: str = "DEVELOPER"
+    db, project_id: str, user_id: str, min_role: str = "REPORTER"
 ) -> str:
     """
     Assert that the user is a member of the project with at least *min_role*.

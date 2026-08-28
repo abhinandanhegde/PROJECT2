@@ -7,8 +7,10 @@ from pydantic import BaseModel
 
 
 class MemberRole(str, Enum):
-    ADMIN = "ADMIN"
+    REPORTER = "REPORTER"
     DEVELOPER = "DEVELOPER"
+    QA = "QA"
+    ADMIN = "ADMIN"
 
 
 class MemberAdd(BaseModel):

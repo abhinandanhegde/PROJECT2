@@ -576,7 +576,7 @@ export default function DashboardPage() {
                 Recent Activity
               </h2>
               <Link
-                href="/activity"
+                href="/bugs"
                 className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
               >
                 View all
@@ -617,7 +617,7 @@ export default function DashboardPage() {
               Component Health
             </h2>
             <Link
-              href="/components"
+              href="/bugs"
               className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
             >
               View all
@@ -693,7 +693,7 @@ export default function DashboardPage() {
               Top Assignees
             </h2>
             <Link
-              href="/teams"
+              href="/bugs"
               className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
             >
               View all

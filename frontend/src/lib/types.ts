@@ -36,6 +36,11 @@ export interface ProjectMember {
   user_id: string
   role: ProjectRole
   created_at: string
+  users?: {
+    id: string
+    email: string
+    display_name: string
+  }
 }
 
 export interface Component {
@@ -49,18 +54,20 @@ export interface Component {
 export interface Bug {
   id: string
   project_id: string
-  component_id?: string
+  component_id?: string | null
   title: string
   description: string
   reporter_id: string
-  assignee_id?: string
+  assignee_id?: string | null
   status: BugStatus
-  resolution?: BugResolution
+  resolution?: BugResolution | null
   severity: BugSeverity
   priority: BugPriority
-  duplicate_of?: string
+  duplicate_of?: string | null
   created_at: string
   updated_at: string
+  reporter_name?: string
+  assignee_name?: string
 }
 
 export interface Comment {
@@ -69,7 +76,8 @@ export interface Comment {
   author_id: string
   body: string
   created_at: string
-  updated_at: string
+  updated_at?: string
+  author_name?: string
 }
 
 export interface Relationship {

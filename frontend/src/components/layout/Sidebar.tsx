@@ -8,12 +8,8 @@ import {
   DashboardIcon,
   IssuesIcon,
   TriageIcon,
-  GraphIcon,
-  AnalyticsIcon,
-  ReportsIcon,
-  ProjectsIcon,
-  TeamsIcon,
-  SettingsIcon,
+  PlusIcon,
+  SearchIcon,
   ChevronDownIcon,
   XIcon,
 } from '@/components/ui/Icons'
@@ -49,12 +45,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
     { label: 'Triage', href: '/bugs?status=NEW', icon: TriageIcon, badge: '12' },
-    { label: 'Graph', href: '/graph', icon: GraphIcon },
-    { label: 'Analytics', href: '/analytics', icon: AnalyticsIcon },
-    { label: 'Reports', href: '/reports', icon: ReportsIcon },
-    { label: 'Projects', href: '/projects', icon: ProjectsIcon },
-    { label: 'Teams', href: '/teams', icon: TeamsIcon },
-    { label: 'Settings', href: '/settings', icon: SettingsIcon },
+    { label: 'New Bug', href: '/bugs/new', icon: PlusIcon },
+    { label: 'Search', href: '/search', icon: SearchIcon },
   ]
 
   const sidebarContent = (

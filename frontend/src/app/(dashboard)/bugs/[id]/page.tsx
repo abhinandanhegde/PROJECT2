@@ -93,7 +93,10 @@ export default function BugDetailPage({
     async function loadBugData() {
       setLoading(true)
       try {
-        const bugRes = await api.getBug('default', id).catch(() => null)
+        // Get first project to use as project_id
+        const projRes = await api.getProjects().catch(() => null)
+        const projId = projRes?.data?.[0]?.id
+        const bugRes = projId ? await api.getBug(projId, id).catch(() => null) : null
         const currentBug = bugRes || fallbackBug
         setBug(currentBug)
 

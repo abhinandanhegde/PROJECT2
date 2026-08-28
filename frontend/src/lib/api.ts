@@ -33,8 +33,9 @@ export const api = {
   getProjectStats: (projectId: string) => authFetch(`/api/projects/${projectId}/stats`),
 
   // ── Bugs ──
-  getBugs: (projectId: string, params?: Record<string, string>) => {
-    const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+  getBugs: (projectId: string, params?: Record<string, string | undefined>) => {
+    const filtered: Record<string, string> = params ? Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]) : {}
+    const qs = Object.keys(filtered).length ? '?' + new URLSearchParams(filtered).toString() : ''
     return authFetch(`/api/projects/${projectId}/bugs${qs}`)
   },
   createBug: (projectId: string, data: Record<string, unknown>) =>
@@ -90,6 +91,13 @@ export const api = {
 
   // ── Intelligence ──
   triage: (bugId: string) => authFetch(`/api/intelligence/triage/${bugId}`, { method: 'POST' }),
+  // Alias: frontend calls triageBug(projectId, body) — no backend endpoint for pre-creation triage,
+  // so this throws to trigger the client-side fallback heuristic.
+  triageBug: (_projectId: string, _data: Record<string, unknown>) => {
+    return Promise.reject(new Error('No pre-creation triage endpoint — using client fallback'))
+  },
   findDuplicates: (bugId: string) => authFetch(`/api/intelligence/duplicates/${bugId}`, { method: 'POST' }),
   riskAnalysis: (bugId: string) => authFetch(`/api/intelligence/risk/${bugId}`, { method: 'POST' }),
+  // Alias: frontend calls analyzeRisk(projectId, bugId)
+  analyzeRisk: (_projectId: string, bugId: string) => authFetch(`/api/intelligence/risk/${bugId}`, { method: 'POST' }),
 }
