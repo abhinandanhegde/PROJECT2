@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
+/* Use the .dark class (not OS prefers-color-scheme) so the header toggle actually switches themes. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
   :root {
     --bg-page: #f8f6f3;
     --bg-card: #ffffff;

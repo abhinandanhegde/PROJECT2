@@ -42,17 +42,13 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
       }
     })
 
-    // Check dark mode preference
+    const stored = localStorage.getItem('theme')
     const isDark =
-      localStorage.getItem('theme') === 'dark' ||
-      (!('theme' in localStorage) &&
+      stored === 'dark' ||
+      (stored !== 'light' &&
         window.matchMedia('(prefers-color-scheme: dark)').matches)
     setDarkMode(isDark)
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
+    document.documentElement.classList.toggle('dark', isDark)
 
     // Global Cmd+K keyboard shortcut
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -67,15 +63,10 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   }, [])
 
   const toggleDarkMode = () => {
-    const nextDark = !darkMode
+    const nextDark = !document.documentElement.classList.contains('dark')
     setDarkMode(nextDark)
-    if (nextDark) {
-      document.documentElement.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    }
+    document.documentElement.classList.toggle('dark', nextDark)
+    localStorage.setItem('theme', nextDark ? 'dark' : 'light')
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -128,7 +119,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
       <div className="flex items-center gap-2 sm:gap-4">
         {/* Dark Mode Toggle */}
         <button
+          type="button"
           onClick={toggleDarkMode}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
           className="p-2 rounded-xl text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
         >
