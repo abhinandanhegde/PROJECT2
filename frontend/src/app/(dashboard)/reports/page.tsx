@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Bug, Component } from '@/lib/types'
+import type { Bug, Component, Project } from '@/lib/types'
 
 interface ComponentHealth {
   name: string
@@ -41,35 +41,41 @@ export default function ReportsPage() {
 
         // Build component health from bugs across projects
         const componentMap = new Map<string, { total: number; resolved: number; open: number }>()
+        let totalResolved = 0
 
-        for (const proj of projects) {
-          try {
+        // Process projects in parallel
+        const projectResults = await Promise.allSettled(
+          projects.map(async (proj: Project) => {
             const [bugRes, compRes] = await Promise.allSettled([
               api.getBugs(proj.id, { per_page: '200' }),
               api.getComponents(proj.id),
             ])
+            return {
+              bugs: bugRes.status === 'fulfilled' ? bugRes.value?.data || [] : [],
+              components: compRes.status === 'fulfilled' ? compRes.value?.data || [] : [],
+            }
+          })
+        )
 
-            const bugs: Bug[] = bugRes.status === 'fulfilled' ? bugRes.value?.data || [] : []
-            const components: Component[] = compRes.status === 'fulfilled' ? compRes.value?.data || [] : []
+        for (const pr of projectResults) {
+          if (pr.status !== 'fulfilled') continue
+          const { bugs, components } = pr.value
 
-            // Count bugs per component
-            bugs.forEach((bug) => {
-              const compName = components.find((c) => c.id === bug.component_id)?.name || 'Uncategorized'
-              const existing = componentMap.get(compName) || { total: 0, resolved: 0, open: 0 }
-              existing.total++
-              if (['RESOLVED', 'VERIFIED', 'CLOSED'].includes(bug.status)) {
-                existing.resolved++
-                setResolvedBugs((prev) => prev + 1)
-              } else {
-                existing.open++
-              }
-
-              componentMap.set(compName, existing)
-            })
-          } catch {
-            // Skip failed projects
-          }
+          bugs.forEach((bug: Bug) => {
+            const compName = components.find((c: Component) => c.id === bug.component_id)?.name || 'Uncategorized'
+            const existing = componentMap.get(compName) || { total: 0, resolved: 0, open: 0 }
+            existing.total++
+            if (['RESOLVED', 'VERIFIED', 'CLOSED'].includes(bug.status)) {
+              existing.resolved++
+              totalResolved++
+            } else {
+              existing.open++
+            }
+            componentMap.set(compName, existing)
+          })
         }
+
+        setResolvedBugs(totalResolved)
 
         // Convert to ComponentHealth array
         const healthList: ComponentHealth[] = Array.from(componentMap.entries())

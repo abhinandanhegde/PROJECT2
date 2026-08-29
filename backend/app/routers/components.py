@@ -52,10 +52,10 @@ async def list_components(
         .range(offset, offset + per_page - 1)
         .execute()
     )
-    count_result = db.table("components").select("id", count="exact").eq("project_id", project_id).execute()
+    count_resp = db.table("components").select("id").eq("project_id", project_id).execute()
     return {
         "data": result.data,
-        "total": count_result.count or len(result.data or []),
+        "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
     }
