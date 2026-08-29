@@ -1,14 +1,20 @@
 'use client'
 
-import React, { useEffect, useState, Suspense, useMemo } from 'react'
+import React, { useEffect, useState, Suspense, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
-import type { Bug } from '@/lib/types'
+import type { Bug, TriageResult } from '@/lib/types'
 import { shortBugId } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
-type Tab = 'all' | 'assigned' | 'reported'
+type Tab = 'all' | 'assigned' | 'reported' | 'triage'
+
+interface EnrichedTriageItem {
+  bug: Bug
+  triage?: TriageResult
+  loading: boolean
+}
 
 function BugsContent() {
   const searchParams = useSearchParams()
@@ -25,6 +31,8 @@ function BugsContent() {
   const [bugs, setBugs] = useState<Bug[]>([])
   const [loading, setLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [triageItems, setTriageItems] = useState<EnrichedTriageItem[]>([])
+  const [triageLoading, setTriageLoading] = useState(false)
 
   // Get current user ID
   useEffect(() => {
@@ -32,6 +40,60 @@ function BugsContent() {
       if (user) setCurrentUserId(user.id)
     })
   }, [])
+
+  const loadTriage = useCallback(async () => {
+    setTriageLoading(true)
+    setTriageItems([])
+    try {
+      const projRes = await api.getProjects()
+      const projs = projRes?.data || []
+      if (projs.length === 0) {
+        setTriageLoading(false)
+        return
+      }
+      const projectId = projs[0].id
+      const bugRes = await api.getBugs(projectId, { per_page: '10' })
+      const list: Bug[] = (bugRes?.data as Bug[]) || []
+      const topBugs = list.slice(0, 5)
+      if (topBugs.length === 0) {
+        setTriageItems([])
+        setTriageLoading(false)
+        return
+      }
+
+      const enriched: EnrichedTriageItem[] = topBugs.map((b) => ({ bug: b, loading: true }))
+      setTriageItems(enriched)
+
+      // Fetch ALL triage in PARALLEL for speed
+      const results = await Promise.allSettled(
+        topBugs.map((b) =>
+          api.triage(projectId, {
+            title: b.title,
+            description: b.description,
+            severity: b.severity,
+            priority: b.priority,
+          })
+        )
+      )
+      setTriageItems(
+        results.map((r, i) => ({
+          bug: topBugs[i],
+          triage: r.status === 'fulfilled' ? r.value : undefined,
+          loading: false,
+        }))
+      )
+    } catch {
+      setTriageItems([])
+    } finally {
+      setTriageLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tabParam === 'triage') {
+      loadTriage()
+    }
+  }, [tabParam, loadTriage])
 
   const fallbackBugs: Bug[] = useMemo(
     () => [
@@ -129,7 +191,10 @@ function BugsContent() {
       }
     }
 
-    loadData()
+    // Don't fetch the plain list when the triage view is active (separate effect loads it)
+    if (tabParam !== 'triage') {
+      loadData()
+    }
   }, [statusFilter, severityFilter, priorityFilter, sortBy, sortOrder, searchQuery, tabParam, currentUserId, fallbackBugs])
 
   const updateParam = (key: string, value: string) => {
@@ -206,6 +271,7 @@ function BugsContent() {
           { key: 'all' as Tab, label: 'All Issues' },
           { key: 'assigned' as Tab, label: 'Assigned to Me' },
           { key: 'reported' as Tab, label: 'Reported by Me' },
+          { key: 'triage' as Tab, label: 'Triage' },
         ]).map((t) => (
           <button
             key={t.key}
@@ -286,6 +352,125 @@ function BugsContent() {
         </div>
       </div>
 
+      {/* Triage Queue View */}
+      {tabParam === 'triage' ? (
+        <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
+          <div className="p-6 pb-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <h2 className="font-bold text-base text-stone-900 dark:text-white">
+                  Smart Triage Queue
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
+                  {triageItems.length}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400">
+                  AI-powered
+                </span>
+              </div>
+            </div>
+
+            {/* Table Header */}
+            <div className="grid grid-cols-12 text-xs font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider pb-3 border-b border-stone-100 dark:border-stone-800">
+              <div className="col-span-5">Issue</div>
+              <div className="col-span-2 text-center">Priority</div>
+              <div className="col-span-2 text-center">Suggested</div>
+              <div className="col-span-2 text-center">Confidence</div>
+              <div className="col-span-1 text-right">Status</div>
+            </div>
+
+            {/* Rows */}
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {triageLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-12 items-center py-3.5 px-1 animate-pulse">
+                    <div className="col-span-5 space-y-1">
+                      <div className="h-3 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+                      <div className="h-3 w-40 bg-stone-200 dark:bg-stone-800 rounded" />
+                    </div>
+                    <div className="col-span-2 flex justify-center"><div className="h-4 w-12 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                    <div className="col-span-2 flex justify-center"><div className="h-4 w-12 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                    <div className="col-span-2 flex justify-center"><div className="h-3 w-10 bg-stone-200 dark:bg-stone-800 rounded" /></div>
+                    <div className="col-span-1 flex justify-end"><div className="h-4 w-14 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                  </div>
+                ))
+              ) : triageItems.length === 0 ? (
+                <div className="text-center py-10 text-xs text-stone-400">
+                  No issues to triage yet. Create your first bug to see suggestions.
+                </div>
+              ) : (
+                triageItems.map((item) => (
+                  <div
+                    key={item.bug.id}
+                    className="grid grid-cols-12 items-center py-3.5 hover:bg-stone-50/70 dark:hover:bg-stone-800/40 rounded-xl transition-colors px-1"
+                  >
+                    <div className="col-span-5 pr-2">
+                      <span className="text-xs font-bold text-orange-600 dark:text-orange-400">
+                        <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{shortBugId(item.bug.id)}</Link>
+                      </span>
+                      <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
+                        <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{item.bug.title}</Link>
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 text-center">
+                      <span
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          item.bug.priority === 'P1'
+                            ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                            : item.bug.priority === 'P2'
+                            ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
+                            : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                        }`}
+                      >
+                        {item.bug.priority}
+                      </span>
+                    </div>
+
+                    <div className="col-span-2 text-center">
+                      {item.loading ? (
+                        <div className="h-4 w-14 bg-stone-200 dark:bg-stone-800 rounded-full mx-auto animate-pulse" />
+                      ) : item.triage ? (
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                            item.triage.suggested_severity === 'CRITICAL' ||
+                            item.triage.suggested_severity === 'BLOCKER'
+                              ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                              : 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
+                          }`}
+                        >
+                          {item.triage.suggested_severity}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-stone-400">—</span>
+                      )}
+                    </div>
+
+                    <div className="col-span-2 text-center">
+                      {item.loading ? (
+                        <div className="h-3 w-10 bg-stone-200 dark:bg-stone-800 rounded mx-auto animate-pulse" />
+                      ) : item.triage ? (
+                        <span className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                          {Math.round(item.triage.confidence * 100)}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-stone-400">—</span>
+                      )}
+                    </div>
+
+                    <div className="col-span-1 text-right">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400">
+                        {item.bug.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* Loading */}
       {loading ? (
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 space-y-4">
@@ -414,6 +599,8 @@ function BugsContent() {
               </div>
             ))}
           </div>
+        </>
+      )}
         </>
       )}
     </div>
