@@ -86,8 +86,32 @@ export const api = {
 
   // ── Dashboard ──
   getDashboardStats: () => authFetch('/api/dashboard/stats'),
-  getDashboardRecent: () => authFetch('/api/dashboard/recent'),
-  getDashboardAssigned: () => authFetch('/api/dashboard/assigned'),
+  getDashboardRecent: (limit?: number) => authFetch(`/api/dashboard/recent${limit ? `?limit=${limit}` : ''}`),
+  getDashboardAssigned: (params?: { status?: string; page?: number; per_page?: number }) => {
+    const filtered: Record<string, string> = params ? Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+    ) : {}
+    const qs = Object.keys(filtered).length ? '?' + new URLSearchParams(filtered).toString() : ''
+    return authFetch(`/api/dashboard/assigned${qs}`)
+  },
+
+  // ── Activity Log (per bug, filtered client-side from dashboard/recent) ──
+  getBugActivity: async (bugId: string) => {
+    const res = await authFetch('/api/dashboard/recent?limit=100')
+    const entries = (res?.data || []).filter((e: Record<string, unknown>) => e.bug_id === bugId)
+    return { data: entries }
+  },
+
+  // ── Triage for multiple bugs (batch) ──
+  triageBatch: async (bugIds: string[]) => {
+    const results = await Promise.allSettled(
+      bugIds.map((id) => authFetch(`/api/intelligence/triage/${id}`, { method: 'POST' }))
+    )
+    return results.map((r, i) => ({
+      bug_id: bugIds[i],
+      ...(r.status === 'fulfilled' ? r.value : { error: true }),
+    }))
+  },
 
   // ── Intelligence ──
   triage: (bugId: string) => authFetch(`/api/intelligence/triage/${bugId}`, { method: 'POST' }),

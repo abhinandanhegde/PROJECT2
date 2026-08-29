@@ -1,59 +1,22 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import {
   DocumentIcon,
   FlagIcon,
   UserIcon,
   LockIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
   CalendarIcon,
-  MoreVerticalIcon,
 } from '@/components/ui/Icons'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
+import type { Bug, TriageResult, ActivityLog } from '@/lib/types'
 
-interface TriageItem {
-  id: string
-  code: string
-  title: string
-  component: string
-  priority: 'P1' | 'P2' | 'P3'
-  assignee: { name: string; avatar?: string } | null
-  similarity: number
-  age: string
-}
-
-interface ActivityItem {
-  id: string
-  dotColor: string
-  actor: string
-  action: string
-  target: string
-  timeAgo: string
-}
-
-interface ComponentStat {
-  name: string
-  issues: number
-  riskLevel: 'High' | 'Medium' | 'Low'
-  color: string
-  percentage: number
-}
-
-interface StaleIssue {
-  code: string
-  title: string
-  days: string
-}
-
-interface AssigneeStat {
-  name: string
-  avatar?: string
-  issues: number
-  percentage: number
+interface EnrichedTriageItem {
+  bug: Bug
+  triage?: TriageResult
+  loading: boolean
 }
 
 function greetingForHour(hour: number) {
@@ -64,19 +27,85 @@ function greetingForHour(hour: number) {
   return 'Good night'
 }
 
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  BUG_CREATED: 'created',
+  BUG_UPDATED: 'updated',
+  BUG_ASSIGNED: 'assigned',
+  BUG_STATUS_CHANGED: 'changed status of',
+  BUG_SEVERITY_CHANGED: 'changed severity of',
+  BUG_PRIORITY_CHANGED: 'changed priority of',
+  BUG_RESOLVED: 'resolved',
+  BUG_REOPENED: 'reopened',
+  COMMENT_CREATED: 'commented on',
+}
+
+const ACTION_COLORS: Record<string, string> = {
+  BUG_CREATED: 'bg-blue-500',
+  BUG_UPDATED: 'bg-orange-500',
+  BUG_ASSIGNED: 'bg-purple-500',
+  BUG_STATUS_CHANGED: 'bg-emerald-500',
+  BUG_SEVERITY_CHANGED: 'bg-red-500',
+  BUG_PRIORITY_CHANGED: 'bg-amber-500',
+  BUG_RESOLVED: 'bg-emerald-600',
+  BUG_REOPENED: 'bg-rose-500',
+  COMMENT_CREATED: 'bg-stone-400',
+}
+
 export default function DashboardPage() {
   const [userName, setUserName] = useState('Alex')
-  const [greeting, setGreeting] = useState(() =>
-    greetingForHour(new Date().getHours())
-  )
+  const [greeting, setGreeting] = useState(() => greetingForHour(new Date().getHours()))
 
-  // Real or mock metrics state
   const [stats, setStats] = useState({
-    openIssues: 87,
-    p1Issues: 6,
-    unassigned: 4,
-    blocked: 3,
+    openIssues: 0,
+    p1Issues: 0,
+    unassigned: 0,
+    blocked: 0,
   })
+
+  const [triageItems, setTriageItems] = useState<EnrichedTriageItem[]>([])
+  const [recentActivities, setRecentActivities] = useState<ActivityLog[]>([])
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [triageLoading, setTriageLoading] = useState(true)
+  const [activityLoading, setActivityLoading] = useState(true)
+  const [staleIssues, setStaleIssues] = useState<{ code: string; title: string; days: string }[]>([])
+
+  const loadTriageData = useCallback(async (bugs: Bug[]) => {
+    setTriageLoading(true)
+    // Pick the 5 most recent bugs for triage analysis
+    const topBugs = bugs.slice(0, 5)
+    const enriched: EnrichedTriageItem[] = topBugs.map((b) => ({ bug: b, loading: true }))
+    setTriageItems(enriched)
+
+    // Fetch triage for each bug
+    for (let i = 0; i < topBugs.length; i++) {
+      try {
+        const triage = await api.triage(topBugs[i].id)
+        setTriageItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, triage, loading: false } : item
+          )
+        )
+      } catch {
+        setTriageItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, loading: false } : item
+          )
+        )
+      }
+    }
+    setTriageLoading(false)
+  }, [])
 
   useEffect(() => {
     setGreeting(greetingForHour(new Date().getHours()))
@@ -92,7 +121,7 @@ export default function DashboardPage() {
       }
     })
 
-    // Fetch real dashboard stats from backend
+    // Fetch real dashboard stats
     api
       .getDashboardStats()
       .then((res) => {
@@ -101,171 +130,67 @@ export default function DashboardPage() {
           setStats({
             openIssues: res.open_assigned || 0,
             p1Issues: (sev['CRITICAL'] || 0) + (sev['BLOCKER'] || 0),
-            unassigned: res.total_bugs_assigned ? Math.max(0, res.total_bugs_assigned - res.open_assigned) : 0,
+            unassigned: res.total_bugs_assigned
+              ? Math.max(0, res.total_bugs_assigned - res.open_assigned)
+              : 0,
             blocked: res.recent_activity_count || 0,
           })
         }
       })
-      .catch(() => {
-        // Keep mock data as fallback if API unavailable
+      .catch(() => {})
+      .finally(() => setStatsLoading(false))
+
+    // Fetch real recent activity
+    api
+      .getDashboardRecent(20)
+      .then((res) => {
+        const entries = res?.data || []
+        setRecentActivities(entries)
+
+        // Extract stale issues from activity log
+        const staleMap = new Map<string, { code: string; title: string; days: string }>()
+        entries.forEach((e: ActivityLog) => {
+          if (e.bug_id && e.entity_type === 'bug') {
+            const age = timeAgo(e.created_at)
+            if (!staleMap.has(e.bug_id) && age.includes('d ago')) {
+              staleMap.set(e.bug_id, {
+                code: e.bug_id,
+                title: e.action.replace(/_/g, ' ').toLowerCase(),
+                days: age,
+              })
+            }
+          }
+        })
+        setStaleIssues(Array.from(staleMap.values()).slice(0, 3))
       })
-  }, [])
+      .catch(() => {})
+      .finally(() => setActivityLoading(false))
 
-  const triageItems: TriageItem[] = [
-    {
-      id: '1',
-      code: 'BUG-184',
-      title: 'Login crashes after session expires',
-      component: 'Authentication',
-      priority: 'P1',
-      assignee: null,
-      similarity: 91,
-      age: '2h ago',
-    },
-    {
-      id: '2',
-      code: 'BUG-181',
-      title: 'API returns 500 on payment process',
-      component: 'Payments',
-      priority: 'P1',
-      assignee: { name: 'Rahul Sharma' },
-      similarity: 78,
-      age: '5h ago',
-    },
-    {
-      id: '3',
-      code: 'BUG-178',
-      title: 'UI freezes on dashboard refresh',
-      component: 'Frontend',
-      priority: 'P2',
-      assignee: { name: 'Priya Singh' },
-      similarity: 65,
-      age: '1d ago',
-    },
-    {
-      id: '4',
-      code: 'BUG-175',
-      title: 'Email notifications not sent',
-      component: 'Notifications',
-      priority: 'P2',
-      assignee: null,
-      similarity: 40,
-      age: '1d ago',
-    },
-  ]
-
-  const recentActivities: ActivityItem[] = [
-    {
-      id: '1',
-      dotColor: 'bg-emerald-500',
-      actor: 'Rahul Sharma',
-      action: 'changed status of',
-      target: 'BUG-143',
-      timeAgo: '2m ago',
-    },
-    {
-      id: '2',
-      dotColor: 'bg-blue-500',
-      actor: 'Priya Singh',
-      action: 'assigned',
-      target: 'BUG-181 to herself',
-      timeAgo: '15m ago',
-    },
-    {
-      id: '3',
-      dotColor: 'bg-orange-500',
-      actor: 'Alex Johnson',
-      action: 'created',
-      target: 'BUG-184',
-      timeAgo: '1h ago',
-    },
-    {
-      id: '4',
-      dotColor: 'bg-stone-400',
-      actor: 'System',
-      action: 'updated priority of',
-      target: 'BUG-175',
-      timeAgo: '3h ago',
-    },
-  ]
-
-  const componentHealthList: ComponentStat[] = [
-    {
-      name: 'Authentication',
-      issues: 23,
-      riskLevel: 'High',
-      color: 'bg-red-500',
-      percentage: 75,
-    },
-    {
-      name: 'Payments',
-      issues: 15,
-      riskLevel: 'Medium',
-      color: 'bg-orange-500',
-      percentage: 52,
-    },
-    {
-      name: 'Frontend',
-      issues: 8,
-      riskLevel: 'Low',
-      color: 'bg-amber-400',
-      percentage: 28,
-    },
-    {
-      name: 'Notifications',
-      issues: 5,
-      riskLevel: 'Low',
-      color: 'bg-emerald-500',
-      percentage: 16,
-    },
-  ]
-
-  const staleIssues: StaleIssue[] = [
-    {
-      code: 'BUG-142',
-      title: 'Session timeout not working',
-      days: '9 days',
-    },
-    {
-      code: 'BUG-129',
-      title: 'Memory leak in data export',
-      days: '8 days',
-    },
-    {
-      code: 'BUG-118',
-      title: 'CSV export fails on large data',
-      days: '7 days',
-    },
-  ]
-
-  const topAssignees: AssigneeStat[] = [
-    {
-      name: 'Rahul Sharma',
-      issues: 18,
-      percentage: 85,
-    },
-    {
-      name: 'Priya Singh',
-      issues: 12,
-      percentage: 60,
-    },
-    {
-      name: 'Mike Ross',
-      issues: 8,
-      percentage: 42,
-    },
-    {
-      name: 'You',
-      issues: 6,
-      percentage: 30,
-    },
-  ]
+    // Fetch bugs for triage queue
+    api
+      .getProjects()
+      .then(async (projRes) => {
+        const projects = projRes?.data || []
+        if (projects.length > 0) {
+          const bugRes = await api.getBugs(projects[0].id, { status: 'NEW', per_page: '5' })
+          const bugs = bugRes?.data || []
+          loadTriageData(bugs)
+        } else {
+          setTriageLoading(false)
+        }
+      })
+      .catch(() => {
+        setTriageLoading(false)
+      })
+  }, [loadTriageData])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })
+
+  const triageCount = triageItems.length
 
   return (
     <div className="space-y-6">
@@ -300,11 +225,14 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="text-3xl font-bold text-stone-900 dark:text-white mt-3">
-            {stats.openIssues}
+            {statsLoading ? (
+              <div className="h-8 w-12 bg-stone-200 dark:bg-stone-800 rounded animate-pulse" />
+            ) : (
+              stats.openIssues
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-3">
-            <ArrowUpIcon className="w-3.5 h-3.5" />
-            <span>12 vs last week</span>
+          <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 font-medium mt-3">
+            <span>Assigned to you</span>
           </div>
         </div>
 
@@ -312,18 +240,21 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="text-xs font-medium text-stone-500 dark:text-stone-400">
-              P1 Issues
+              Critical / Blocker
             </div>
             <div className="w-9 h-9 rounded-full bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 flex items-center justify-center">
               <FlagIcon className="w-4 h-4" />
             </div>
           </div>
           <div className="text-3xl font-bold text-stone-900 dark:text-white mt-3">
-            {stats.p1Issues}
+            {statsLoading ? (
+              <div className="h-8 w-12 bg-stone-200 dark:bg-stone-800 rounded animate-pulse" />
+            ) : (
+              stats.p1Issues
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-3">
-            <ArrowUpIcon className="w-3.5 h-3.5" />
-            <span>2 vs last week</span>
+          <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 font-medium mt-3">
+            <span>High-priority items</span>
           </div>
         </div>
 
@@ -338,46 +269,55 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="text-3xl font-bold text-stone-900 dark:text-white mt-3">
-            {stats.unassigned}
+            {statsLoading ? (
+              <div className="h-8 w-12 bg-stone-200 dark:bg-stone-800 rounded animate-pulse" />
+            ) : (
+              stats.unassigned
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-3">
-            <ArrowDownIcon className="w-3.5 h-3.5" />
-            <span>3 vs last week</span>
+          <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 font-medium mt-3">
+            <span>Need assignment</span>
           </div>
         </div>
 
-        {/* Blocked */}
+        {/* Activity This Week */}
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-5 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="flex items-center justify-between">
             <div className="text-xs font-medium text-stone-500 dark:text-stone-400">
-              Blocked
+              Activity This Week
             </div>
             <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <LockIcon className="w-4 h-4" />
             </div>
           </div>
           <div className="text-3xl font-bold text-stone-900 dark:text-white mt-3">
-            {stats.blocked}
+            {statsLoading ? (
+              <div className="h-8 w-12 bg-stone-200 dark:bg-stone-800 rounded animate-pulse" />
+            ) : (
+              stats.blocked
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-3">
-            <ArrowDownIcon className="w-3.5 h-3.5" />
-            <span>1 vs last week</span>
+          <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 font-medium mt-3">
+            <span>Actions across projects</span>
           </div>
         </div>
       </div>
 
-      {/* Middle Grid: Triage Queue (Left) & Project Health / Recent Activity (Right) */}
+      {/* Middle Grid: Smart Triage Queue (Left) & Recent Activity (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Triage Queue (2 cols wide) */}
+        {/* Smart Triage Queue (2 cols wide) */}
         <div className="lg:col-span-2 bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs flex flex-col justify-between overflow-hidden">
           <div className="p-6 pb-2">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <h2 className="font-bold text-base text-stone-900 dark:text-white">
-                  Triage Queue
+                  Smart Triage Queue
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
-                  12
+                  {triageCount}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400">
+                  AI-powered
                 </span>
               </div>
               <Link
@@ -390,72 +330,110 @@ export default function DashboardPage() {
 
             {/* Table Header */}
             <div className="grid grid-cols-12 text-xs font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider pb-3 border-b border-stone-100 dark:border-stone-800">
-              <div className="col-span-6 sm:col-span-5">Issue</div>
+              <div className="col-span-5">Issue</div>
               <div className="col-span-2 text-center">Priority</div>
-              <div className="col-span-4 sm:col-span-3">Assignee</div>
-              <div className="hidden sm:block sm:col-span-1 text-center">Similarity</div>
-              <div className="hidden sm:block sm:col-span-1 text-right">Age</div>
+              <div className="col-span-2 text-center">Suggested</div>
+              <div className="col-span-2 text-center">Confidence</div>
+              <div className="col-span-1 text-right">Status</div>
             </div>
 
             {/* Rows */}
             <div className="divide-y divide-stone-100 dark:divide-stone-800">
-              {triageItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="grid grid-cols-12 items-center py-3.5 hover:bg-stone-50/70 dark:hover:bg-stone-800/40 rounded-xl transition-colors px-1"
-                >
-                  <div className="col-span-6 sm:col-span-5 pr-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline">
-                        <Link href={`/bugs/${item.id}`}>{item.code}</Link>
+              {triageLoading ? (
+                // Loading skeleton
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-12 items-center py-3.5 px-1 animate-pulse">
+                    <div className="col-span-5 space-y-1">
+                      <div className="h-3 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+                      <div className="h-3 w-40 bg-stone-200 dark:bg-stone-800 rounded" />
+                    </div>
+                    <div className="col-span-2 flex justify-center"><div className="h-4 w-12 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                    <div className="col-span-2 flex justify-center"><div className="h-4 w-12 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                    <div className="col-span-2 flex justify-center"><div className="h-3 w-10 bg-stone-200 dark:bg-stone-800 rounded" /></div>
+                    <div className="col-span-1 flex justify-end"><div className="h-4 w-14 bg-stone-200 dark:bg-stone-800 rounded-full" /></div>
+                  </div>
+                ))
+              ) : triageItems.length === 0 ? (
+                <div className="text-center py-8 text-xs text-stone-400">
+                  No issues found. Create your first bug to see AI triage suggestions.
+                </div>
+              ) : (
+                triageItems.map((item) => (
+                  <div
+                    key={item.bug.id}
+                    className="grid grid-cols-12 items-center py-3.5 hover:bg-stone-50/70 dark:hover:bg-stone-800/40 rounded-xl transition-colors px-1"
+                  >
+                    <div className="col-span-5 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline">
+                          <Link href={`/bugs/${item.bug.id}`}>{item.bug.id}</Link>
+                        </span>
+                      </div>
+                      <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
+                        <Link href={`/bugs/${item.bug.id}`}>{item.bug.title}</Link>
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 text-center">
+                      <span
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          item.bug.priority === 'P1'
+                            ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                            : item.bug.priority === 'P2'
+                            ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
+                            : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                        }`}
+                      >
+                        {item.bug.priority}
                       </span>
                     </div>
-                    <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
-                      <Link href={`/bugs/${item.id}`}>{item.title}</Link>
-                    </div>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
-                      {item.component}
-                    </span>
-                  </div>
 
-                  <div className="col-span-2 text-center">
-                    <span
-                      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        item.priority === 'P1'
-                          ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
-                          : 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
-                      }`}
-                    >
-                      {item.priority}
-                    </span>
-                  </div>
-
-                  <div className="col-span-4 sm:col-span-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-xs font-semibold text-stone-600 dark:text-stone-300">
-                      {item.assignee ? item.assignee.name.charAt(0) : '?'}
+                    <div className="col-span-2 text-center">
+                      {item.loading ? (
+                        <div className="h-4 w-14 bg-stone-200 dark:bg-stone-800 rounded-full mx-auto animate-pulse" />
+                      ) : item.triage ? (
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                            item.triage.suggested_severity === 'CRITICAL' || item.triage.suggested_severity === 'BLOCKER'
+                              ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                              : 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
+                          }`}
+                        >
+                          {item.triage.suggested_severity}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-stone-400">—</span>
+                      )}
                     </div>
-                    <span className="text-xs font-medium text-stone-700 dark:text-stone-300 truncate">
-                      {item.assignee ? item.assignee.name : 'Unassigned'}
-                    </span>
-                  </div>
 
-                  <div className="hidden sm:block sm:col-span-1 text-center">
-                    <div className="text-xs font-medium text-stone-700 dark:text-stone-300">
-                      {item.similarity}%
+                    <div className="col-span-2 text-center">
+                      {item.loading ? (
+                        <div className="h-3 w-10 bg-stone-200 dark:bg-stone-800 rounded mx-auto animate-pulse" />
+                      ) : item.triage ? (
+                        <span className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                          {Math.round(item.triage.confidence * 100)}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-stone-400">—</span>
+                      )}
                     </div>
-                    <div className="w-12 h-1 bg-stone-100 dark:bg-stone-800 rounded-full mx-auto mt-1 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${item.similarity}%` }}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="hidden sm:block sm:col-span-1 text-right text-xs text-stone-400 dark:text-stone-500">
-                    {item.age}
+                    <div className="col-span-1 text-right">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
+                          item.bug.status === 'NEW'
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400'
+                            : item.bug.status === 'IN_PROGRESS'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400'
+                            : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                        }`}
+                      >
+                        {item.bug.status.replace('_', ' ')}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -469,110 +447,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right Column: Project Health & Recent Activity */}
-        <div className="space-y-6">
-          {/* Project Health Card */}
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-base text-stone-900 dark:text-white">
-                Project Health
-              </h2>
-              <button className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200">
-                <MoreVerticalIcon className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              {/* Donut Chart */}
-              <div className="relative w-32 h-32 shrink-0 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                  {/* Background Circle */}
-                  <path
-                    className="text-stone-100 dark:text-stone-800"
-                    strokeWidth="3.8"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                  {/* Healthy (72%) */}
-                  <path
-                    className="text-emerald-500"
-                    strokeDasharray="72, 100"
-                    strokeWidth="3.8"
-                    strokeLinecap="round"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                  {/* At Risk (18%) */}
-                  <path
-                    className="text-amber-400"
-                    strokeDasharray="18, 100"
-                    strokeDashoffset="-72"
-                    strokeWidth="3.8"
-                    strokeLinecap="round"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                  {/* Critical (7%) */}
-                  <path
-                    className="text-red-500"
-                    strokeDasharray="7, 100"
-                    strokeDashoffset="-90"
-                    strokeWidth="3.8"
-                    strokeLinecap="round"
-                    stroke="currentColor"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-base font-bold text-stone-900 dark:text-white leading-none">
-                    72%
-                  </span>
-                  <span className="text-xs text-stone-400 font-medium mt-0.5">
-                    Healthy
-                  </span>
-                </div>
-              </div>
-
-              {/* Donut Legend */}
-              <div className="space-y-2 text-xs flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-stone-600 dark:text-stone-300">Healthy</span>
-                  </div>
-                  <span className="font-semibold text-stone-900 dark:text-white">72%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-stone-600 dark:text-stone-300">At Risk</span>
-                  </div>
-                  <span className="font-semibold text-stone-900 dark:text-white">18%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-stone-600 dark:text-stone-300">Critical</span>
-                  </div>
-                  <span className="font-semibold text-stone-900 dark:text-white">7%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-stone-300 dark:bg-stone-600" />
-                    <span className="text-stone-600 dark:text-stone-300">Unknown</span>
-                  </div>
-                  <span className="font-semibold text-stone-900 dark:text-white">3%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Activity Card */}
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
+        {/* Right Column: Recent Activity (Real Data) */}
+        <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
+          <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-base text-stone-900 dark:text-white">
                 Recent Activity
@@ -586,77 +463,57 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-3.5">
-              {recentActivities.map((act) => (
-                <div key={act.id} className="flex items-start gap-2.5 text-xs">
-                  <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${act.dotColor}`} />
-                  <div className="flex-1">
-                    <p className="text-stone-700 dark:text-stone-300">
-                      <span className="font-semibold text-stone-900 dark:text-white">
-                        {act.actor}
-                      </span>{' '}
-                      {act.action}{' '}
-                      <span className="font-semibold text-stone-900 dark:text-white">
-                        {act.target}
-                      </span>
-                    </p>
+              {activityLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-2.5 animate-pulse">
+                    <div className="w-2 h-2 rounded-full bg-stone-200 dark:bg-stone-800 mt-1.5 shrink-0" />
+                    <div className="flex-1 space-y-1">
+                      <div className="h-3 w-3/4 bg-stone-200 dark:bg-stone-800 rounded" />
+                      <div className="h-2 w-1/4 bg-stone-200 dark:bg-stone-800 rounded" />
+                    </div>
                   </div>
-                  <span className="text-xs text-stone-400 whitespace-nowrap">
-                    {act.timeAgo}
-                  </span>
+                ))
+              ) : recentActivities.length === 0 ? (
+                <div className="text-center py-6 text-xs text-stone-400">
+                  No recent activity yet. Start using the app to see activity here.
                 </div>
-              ))}
+              ) : (
+                recentActivities.slice(0, 8).map((act) => {
+                  const label = ACTION_LABELS[act.action] || act.action.toLowerCase()
+                  const color = ACTION_COLORS[act.action] || 'bg-stone-400'
+
+                  return (
+                    <div key={act.id} className="flex items-start gap-2.5 text-xs">
+                      <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-stone-700 dark:text-stone-300">
+                          <span className="font-semibold text-stone-900 dark:text-white">
+                            {act.actor_name || 'User'}
+                          </span>{' '}
+                          {label}{' '}
+                          {act.bug_id && (
+                            <span className="font-semibold text-stone-900 dark:text-white">
+                              <Link href={`/bugs/${act.bug_id}`} className="hover:underline">
+                                {act.bug_id}
+                              </Link>
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <span className="text-xs text-stone-400 whitespace-nowrap">
+                        {timeAgo(act.created_at)}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom 3 Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Component Health */}
-        <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-sm text-stone-900 dark:text-white">
-              Component Health
-            </h2>
-            <Link
-              href="/reports"
-              className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
-            >
-              View all
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {componentHealthList.map((comp) => (
-              <div key={comp.name} className="flex items-center justify-between gap-3">
-                <div className="w-24 text-xs font-medium text-stone-700 dark:text-stone-300 truncate">
-                  {comp.name}
-                </div>
-                <div className="flex-1 h-2 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${comp.color}`}
-                    style={{ width: `${comp.percentage}%` }}
-                  />
-                </div>
-                <div className="text-xs text-stone-400 whitespace-nowrap w-16 text-right">
-                  {comp.issues} issues
-                </div>
-                <span
-                  className={`px-2 py-0.5 rounded text-xs font-bold ${
-                    comp.riskLevel === 'High'
-                      ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
-                      : comp.riskLevel === 'Medium'
-                      ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
-                      : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                  }`}
-                >
-                  {comp.riskLevel}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Stale Issues */}
+      {/* Bottom Cards: Stale Issues (Real or Empty) */}
+      {staleIssues.length > 0 && (
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-sm text-stone-900 dark:text-white">
@@ -687,45 +544,7 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-
-        {/* Top Assignees */}
-        <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-sm text-stone-900 dark:text-white">
-              Top Assignees
-            </h2>
-            <Link
-              href="/teams"
-              className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
-            >
-              View all
-            </Link>
-          </div>
-          <div className="space-y-3.5">
-            {topAssignees.map((a) => (
-              <div key={a.name} className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 w-28 truncate">
-                  <div className="w-5 h-5 rounded-full bg-stone-700 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                    {a.name.charAt(0)}
-                  </div>
-                  <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
-                    {a.name}
-                  </span>
-                </div>
-                <span className="text-xs text-stone-400 whitespace-nowrap">
-                  {a.issues} issues
-                </span>
-                <div className="flex-1 h-1.5 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{ width: `${a.percentage}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

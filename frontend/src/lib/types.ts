@@ -94,6 +94,7 @@ export interface ActivityLog {
   project_id: string
   bug_id?: string
   actor_id: string
+  actor_name?: string
   action: string
   entity_type: string
   entity_id: string

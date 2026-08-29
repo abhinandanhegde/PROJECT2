@@ -47,6 +47,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
   const navItems = [
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
+    { label: 'My Issues', href: '/my-issues', icon: IssuesIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
     { label: 'Triage', href: '/bugs?status=NEW', icon: TriageIcon, badge: '12' },
     { label: 'Graph', href: '/graph', icon: GraphIcon },

@@ -9,6 +9,7 @@ import type {
   BugResolution,
   Comment,
   RiskResult,
+  ActivityLog,
 } from '@/lib/types'
 import { useToast } from '@/components/ui/Toast'
 import { SparklesIcon } from '@/components/ui/Icons'
@@ -23,6 +24,32 @@ const VALID_TRANSITIONS: Record<BugStatus, BugStatus[]> = {
   CLOSED: ['REOPENED'],
 }
 
+const ACTION_ICONS: Record<string, { color: string; label: string }> = {
+  BUG_CREATED: { color: 'bg-blue-500', label: 'created' },
+  BUG_UPDATED: { color: 'bg-orange-500', label: 'updated' },
+  BUG_ASSIGNED: { color: 'bg-purple-500', label: 'assigned' },
+  BUG_STATUS_CHANGED: { color: 'bg-emerald-500', label: 'changed status of' },
+  BUG_SEVERITY_CHANGED: { color: 'bg-red-500', label: 'changed severity of' },
+  BUG_PRIORITY_CHANGED: { color: 'bg-amber-500', label: 'changed priority of' },
+  BUG_RESOLVED: { color: 'bg-emerald-600', label: 'resolved' },
+  BUG_REOPENED: { color: 'bg-rose-500', label: 'reopened' },
+  COMMENT_CREATED: { color: 'bg-stone-400', label: 'commented on' },
+  COMMENT_DELETED: { color: 'bg-stone-400', label: 'removed comment from' },
+  RELATIONSHIP_CREATED: { color: 'bg-indigo-500', label: 'linked' },
+  RELATIONSHIP_REMOVED: { color: 'bg-stone-400', label: 'unlinked' },
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
 export default function BugDetailPage({
   params,
 }: {
@@ -33,12 +60,14 @@ export default function BugDetailPage({
 
   const [bug, setBug] = useState<Bug | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [activityLog, setActivityLog] = useState<ActivityLog[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [commentLoading, setCommentLoading] = useState(false)
   const [riskData, setRiskData] = useState<RiskResult | null>(null)
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false)
   const [selectedResolution, setSelectedResolution] = useState<BugResolution>('FIXED')
+  const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments')
 
   const fallbackBug: Bug = useMemo(
     () => ({
@@ -89,27 +118,64 @@ export default function BugDetailPage({
     [id]
   )
 
+  const fallbackActivity: ActivityLog[] = useMemo(
+    () => [
+      {
+        id: 'a1',
+        project_id: 'p1',
+        bug_id: id,
+        actor_id: 'u1',
+        actor_name: 'Alex Johnson',
+        action: 'BUG_CREATED',
+        entity_type: 'bug',
+        entity_id: id,
+        created_at: new Date(Date.now() - 7200000).toISOString(),
+      },
+      {
+        id: 'a2',
+        project_id: 'p1',
+        bug_id: id,
+        actor_id: 'u2',
+        actor_name: 'System',
+        action: 'BUG_STATUS_CHANGED',
+        entity_type: 'bug',
+        entity_id: id,
+        old_value: { status: 'NEW' },
+        new_value: { status: 'CONFIRMED' },
+        created_at: new Date(Date.now() - 5400000).toISOString(),
+      },
+    ],
+    [id]
+  )
+
   useEffect(() => {
     async function loadBugData() {
       setLoading(true)
       try {
-        // Get first project to use as project_id
         const projRes = await api.getProjects().catch(() => null)
         const projId = projRes?.data?.[0]?.id
         const bugRes = projId ? await api.getBug(projId, id).catch(() => null) : null
         const currentBug = bugRes || fallbackBug
         setBug(currentBug)
 
-        // Load comments
-        const commentsRes = await api.getComments(id).catch(() => null)
-        setComments(commentsRes?.data || fallbackComments)
+        // Load comments, activity, and risk in parallel
+        const [commentsRes, activityRes] = await Promise.allSettled([
+          api.getComments(id),
+          api.getBugActivity(id),
+        ])
+
+        setComments(
+          commentsRes.status === 'fulfilled' ? commentsRes.value?.data || fallbackComments : fallbackComments
+        )
+        setActivityLog(
+          activityRes.status === 'fulfilled' ? activityRes.value?.data || fallbackActivity : fallbackActivity
+        )
 
         // Load risk analysis
         api
           .analyzeRisk(currentBug.project_id, id)
           .then((res) => setRiskData(res))
           .catch(() => {
-            // Local fallback risk calculation
             setRiskData({
               risk_level: currentBug.severity === 'CRITICAL' ? 'HIGH' : 'MEDIUM',
               risk_score: 68.5,
@@ -126,13 +192,14 @@ export default function BugDetailPage({
       } catch {
         setBug(fallbackBug)
         setComments(fallbackComments)
+        setActivityLog(fallbackActivity)
       } finally {
         setLoading(false)
       }
     }
 
     loadBugData()
-  }, [id, fallbackBug, fallbackComments])
+  }, [id, fallbackBug, fallbackComments, fallbackActivity])
 
   const handleStatusChange = async (newStatus: BugStatus, resolution?: BugResolution) => {
     if (!bug) return
@@ -145,7 +212,6 @@ export default function BugDetailPage({
       setBug((prev) => (prev ? { ...prev, status: newStatus, resolution: resolution || null } : null))
       success(`Status changed to ${newStatus}`)
     } catch {
-      // Optimistic update for demo fallback
       setBug((prev) => (prev ? { ...prev, status: newStatus, resolution: resolution || null } : null))
       success(`Status updated to ${newStatus}`)
     }
@@ -366,66 +432,159 @@ export default function BugDetailPage({
         </div>
       )}
 
-      {/* Comments Section */}
-      <div className="bg-white dark:bg-stone-900 p-6 sm:p-8 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-6">
-        <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-4">
-          <h2 className="font-bold text-base text-stone-900 dark:text-white">
-            Comments & Audit Activity ({comments.length})
-          </h2>
+      {/* Comments & Activity Timeline (Tabbed) */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs overflow-hidden">
+        {/* Tab Header */}
+        <div className="flex border-b border-stone-100 dark:border-stone-800">
+          <button
+            onClick={() => setActiveTab('comments')}
+            className={`flex-1 px-6 py-4 text-xs font-semibold transition-colors cursor-pointer ${
+              activeTab === 'comments'
+                ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/30 dark:bg-orange-950/10'
+                : 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300'
+            }`}
+          >
+            Comments ({comments.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('activity')}
+            className={`flex-1 px-6 py-4 text-xs font-semibold transition-colors cursor-pointer ${
+              activeTab === 'activity'
+                ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/30 dark:bg-orange-950/10'
+                : 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300'
+            }`}
+          >
+            Activity Timeline ({activityLog.length})
+          </button>
         </div>
 
-        {/* Comment list */}
-        <div className="space-y-4">
-          {comments.length === 0 ? (
-            <div className="text-center py-6 text-xs text-stone-400">
-              No comments yet. Start the conversation below.
-            </div>
-          ) : (
-            comments.map((comment) => (
-              <div
-                key={comment.id}
-                className="p-4 rounded-xl bg-stone-50/60 dark:bg-stone-800/40 border border-stone-100 dark:border-stone-800 space-y-1.5"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-stone-900 dark:text-white">
-                    {comment.author_name || 'User'}
-                  </span>
-                  <span className="text-xs text-stone-400">
-                    {new Date(comment.created_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}{' '}
-                    • {new Date(comment.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap">
-                  {comment.body}
-                </div>
+        <div className="p-6 sm:p-8">
+          {/* Comments Tab */}
+          {activeTab === 'comments' && (
+            <>
+              <div className="space-y-4">
+                {comments.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-stone-400">
+                    No comments yet. Start the conversation below.
+                  </div>
+                ) : (
+                  comments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="p-4 rounded-xl bg-stone-50/60 dark:bg-stone-800/40 border border-stone-100 dark:border-stone-800 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-stone-900 dark:text-white">
+                          {comment.author_name || 'User'}
+                        </span>
+                        <span className="text-xs text-stone-400">
+                          {new Date(comment.created_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          • {new Date(comment.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-wrap">
+                        {comment.body}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            ))
+
+              {/* Add comment form */}
+              <form onSubmit={handleAddComment} className="space-y-3 pt-4 mt-6 border-t border-stone-100 dark:border-stone-800">
+                <textarea
+                  rows={3}
+                  placeholder="Add a comment or update..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  className="w-full text-xs bg-stone-50/50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl p-3 text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500"
+                  required
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={commentLoading}
+                    className="px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {commentLoading ? 'Posting...' : 'Post Comment'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {/* Activity Timeline Tab */}
+          {activeTab === 'activity' && (
+            <div className="relative">
+              {/* Vertical timeline line */}
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-stone-200 dark:bg-stone-700" />
+
+              <div className="space-y-0">
+                {activityLog.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-stone-400">
+                    No activity recorded for this issue yet.
+                  </div>
+                ) : (
+                  activityLog.map((entry, idx) => {
+                    const icon = ACTION_ICONS[entry.action] || { color: 'bg-stone-400', label: entry.action }
+                    const oldVal = entry.old_value as Record<string, string> | undefined
+                    const newVal = entry.new_value as Record<string, string> | undefined
+
+                    return (
+                      <div key={entry.id || idx} className="relative flex items-start gap-4 py-3 pl-1">
+                        {/* Timeline dot */}
+                        <div className={`relative z-10 w-8 h-8 rounded-full ${icon.color} flex items-center justify-center shrink-0 ring-4 ring-white dark:ring-stone-900`}>
+                          <span className="text-white text-xs font-bold">
+                            {(entry.actor_name || 'U').charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0 pt-1">
+                          <p className="text-xs text-stone-700 dark:text-stone-300">
+                            <span className="font-semibold text-stone-900 dark:text-white">
+                              {entry.actor_name || 'Unknown'}
+                            </span>{' '}
+                            {icon.label}{' '}
+                            <span className="font-semibold text-stone-900 dark:text-white">
+                              {entry.entity_type === 'bug' ? entry.entity_id : entry.entity_type}
+                            </span>
+                          </p>
+
+                          {/* Show old → new values if available */}
+                          {oldVal && newVal && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                              {Object.keys(newVal).map((key) => (
+                                <div key={key} className="flex items-center gap-1">
+                                  {oldVal[key] && (
+                                    <span className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-500 line-through">
+                                      {String(oldVal[key])}
+                                    </span>
+                                  )}
+                                  <span className="text-stone-400">→</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 font-medium">
+                                    {String(newVal[key])}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="text-xs text-stone-400 mt-1">
+                            {timeAgo(entry.created_at)}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Add comment form */}
-        <form onSubmit={handleAddComment} className="space-y-3 pt-4">
-          <textarea
-            rows={3}
-            placeholder="Add a comment or update..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            className="w-full text-xs bg-stone-50/50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl p-3 text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500"
-            required
-          />
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={commentLoading}
-              className="px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              {commentLoading ? 'Posting...' : 'Post Comment'}
-            </button>
-          </div>
-        </form>
       </div>
 
       {/* Resolution Picker Modal */}
