@@ -75,7 +75,8 @@ def seed_data(db, user_id: str) -> dict:
     # Delete old data by deleting projects (CASCADE handles rest)
     try:
         old = db.table("projects").select("id").eq("created_by", user_id).execute()
-        for p in (old.data or []):
+        old_list = old.data if hasattr(old, 'data') else (old if isinstance(old, list) else [])
+        for p in (old_list or []):
             try:
                 db.table("projects").delete().eq("id", p["id"]).execute()
             except Exception as e:
@@ -247,7 +248,8 @@ async def setup_demo_account(body: DemoSetupRequest):
             # Fallback: list all users
             if not user_id:
                 users = db.auth.admin.list_users()
-                for u in (users.users or []):
+                user_list = users if isinstance(users, list) else (getattr(users, 'users', None) or [])
+                for u in user_list:
                     if u.email == body.email:
                         user_id = u.id
                         break
