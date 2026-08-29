@@ -57,13 +57,16 @@ export default function LoginPage() {
         }),
       })
 
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const err = await res.text()
-        console.error('Demo setup failed:', err)
+        setError(`Demo setup failed: ${data.detail || 'Unknown error'}. Make sure backend is running.`)
+        setLoading(false)
+        return
       }
     } catch (e) {
-      console.error('Demo setup network error:', e)
-      // Continue anyway — user might already exist
+      setError('Cannot reach backend. Make sure uvicorn is running on port 8000.')
+      setLoading(false)
+      return
     }
 
     // Step 2: Sign in with the demo account

@@ -157,17 +157,32 @@ async def setup_demo_account(body: DemoSetupRequest):
     except Exception as e:
         logger.warning(f"Could not upsert user: {e}")
 
-    # ── Step 4: Check if data already seeded for this user ────
+    # ── Step 4: Wipe old seed data and re-seed ───────────────
+    # Always delete old data so partial seeds don't block us.
     try:
-        existing_projects = db.table("projects").select("id").eq("created_by", user_id).execute()
-        if existing_projects.data and len(existing_projects.data) > 0:
-            return {
-                "status": "already_seeded",
-                "user_id": user_id,
-                "message": "Demo account already has data",
-            }
+        old_projs = db.table("projects").select("id").eq("created_by", user_id).execute()
+        for p in (old_projs.data or []):
+            pid = p["id"]
+            try: db.table("activity_log").delete().eq("project_id", pid).execute()
+            except: pass
+            try: db.table("notifications").delete().eq("project_id", pid).execute()
+            except: pass
+            try: db.table("comments").delete().in_("bug_id",
+                [b["id"] for b in db.table("bugs").select("id").eq("project_id", pid).execute().data or []]).execute()
+            except: pass
+            try: db.table("relationships").delete().eq("created_by", user_id).execute()
+            except: pass
+            try: db.table("bugs").delete().eq("project_id", pid).execute()
+            except: pass
+            try: db.table("components").delete().eq("project_id", pid).execute()
+            except: pass
+            try: db.table("project_members").delete().eq("project_id", pid).execute()
+            except: pass
+            try: db.table("projects").delete().eq("id", pid).execute()
+            except: pass
+        logger.info(f"Wiped old seed data for user {user_id}")
     except Exception as e:
-        logger.warning(f"Could not check existing projects: {e}")
+        logger.warning(f"Could not wipe old data: {e}")
 
     # ── Step 5: Seed projects ─────────────────────────────────
     project_ids = []
@@ -328,6 +343,14 @@ async def setup_demo_account(body: DemoSetupRequest):
                 notif_count += 1
             except Exception as e:
                 logger.error(f"Failed to create notification: {e}")
+
+    if len(all_bugs) == 0:
+        logger.error("SEED FAILED: No bugs were created. Check RLS policies and enum values.")
+        return {
+            "status": "error",
+            "user_id": user_id,
+            "message": "Seed failed — no bugs created. Check backend logs for details.",
+        }
 
     return {
         "status": "seeded",
