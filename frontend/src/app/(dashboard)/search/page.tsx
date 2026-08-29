@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Bug } from '@/lib/types'
+import { shortBugId } from '@/lib/types'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SearchIcon } from '@/components/ui/Icons'
 
@@ -191,7 +192,7 @@ function SearchContent() {
             >
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400 group-hover:underline">
-                  {bug.id}
+                  {shortBugId(bug.id)}
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
                   {bug.status}

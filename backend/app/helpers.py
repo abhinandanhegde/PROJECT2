@@ -56,20 +56,18 @@ def log_activity(
     old_value: Optional[dict] = None,
 ) -> None:
     """
-    Insert an entry into the activity_log table using the RPC.
+    Insert an entry into the activity_log table.
     """
-    params = {
-        "p_project_id": project_id,
-        "p_actor_id": actor_id,
-        "p_action": action,
-        "p_entity_type": entity_type,
-        "p_entity_id": entity_id,
-        "p_bug_id": entity_id if entity_type == "BUG" else None,
-        "p_new_value": details,
-        "p_old_value": old_value,
-    }
-    
     try:
-        db.rpc("log_activity", params).execute()
+        db.table("activity_log").insert({
+            "project_id": project_id,
+            "actor_id": actor_id,
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "bug_id": entity_id if entity_type == "BUG" else None,
+            "new_value": details,
+            "old_value": old_value,
+        }).execute()
     except Exception as e:
         print(f"Log activity failed: {e}")

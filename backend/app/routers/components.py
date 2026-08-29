@@ -46,15 +46,16 @@ async def list_components(
     require_project_role(db, project_id, user["id"])
     offset = (page - 1) * per_page
     result = (
-        db.table("components").select("*", count="exact")
+        db.table("components").select("*")
         .eq("project_id", project_id)
         .order("name")
         .range(offset, offset + per_page - 1)
         .execute()
     )
+    count_result = db.table("components").select("id", count="exact").eq("project_id", project_id).execute()
     return {
         "data": result.data,
-        "total": result.count or 0,
+        "total": count_result.count or len(result.data or []),
         "page": page,
         "per_page": per_page,
     }

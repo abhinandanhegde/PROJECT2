@@ -11,6 +11,7 @@ import type {
   RiskResult,
   ActivityLog,
 } from '@/lib/types'
+import { shortBugId } from '@/lib/types'
 import { useToast } from '@/components/ui/Toast'
 import { SparklesIcon } from '@/components/ui/Icons'
 
@@ -276,7 +277,7 @@ export default function BugDetailPage({
           </Link>
           <span>/</span>
           <span className="font-mono font-bold text-orange-600 dark:text-orange-400">
-            {bug.id}
+            {shortBugId(bug.id)}
           </span>
         </div>
         <Link

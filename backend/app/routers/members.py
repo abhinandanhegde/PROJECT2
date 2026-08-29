@@ -55,15 +55,16 @@ async def list_members(
     offset = (page - 1) * per_page
     result = (
         db.table("project_members")
-        .select("*, users(id, email, display_name)", count="exact")
+        .select("*, users(id, email, display_name)")
         .eq("project_id", project_id)
         .order("created_at", desc=False)
         .range(offset, offset + per_page - 1)
         .execute()
     )
+    count_result = db.table("project_members").select("id", count="exact").eq("project_id", project_id).execute()
     return {
         "data": result.data,
-        "total": result.count or 0,
+        "total": count_result.count or len(result.data or []),
         "page": page,
         "per_page": per_page,
     }
@@ -98,8 +99,8 @@ async def remove_member(
 
     member_row = existing.data[0]
     if member_row["role"] == "ADMIN":
-        admins = db.table("project_members").select("id", count="exact").eq("project_id", project_id).eq("role", "ADMIN").execute()
-        if (admins.count or 0) <= 1:
+        admins = db.table("project_members").select("id").eq("project_id", project_id).eq("role", "ADMIN").execute()
+        if len(admins.data or []) <= 1:
             raise ConflictError("Cannot remove the last admin from a project")
 
     db.table("project_members").delete().eq("id", member_id).execute()

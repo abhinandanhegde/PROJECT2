@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import type { Bug } from '@/lib/types'
+import { shortBugId } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
 type Tab = 'all' | 'assigned' | 'reported'
@@ -339,7 +340,7 @@ function BugsContent() {
                 {bugs.map((bug) => (
                   <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
                     <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
-                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.id}</Link>
+                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{shortBugId(bug.id)}</Link>
                     </td>
                     <td className="py-3.5 px-4 font-medium text-stone-900 dark:text-white max-w-xs truncate">
                       <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.title}</Link>
@@ -376,7 +377,7 @@ function BugsContent() {
               <div key={bug.id} className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
-                    <Link href={`/bugs/${bug.id}`}>{bug.id}</Link>
+                    <Link href={`/bugs/${bug.id}`}>{shortBugId(bug.id)}</Link>
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
                 </div>

@@ -12,6 +12,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import type { Bug, TriageResult, ActivityLog } from '@/lib/types'
+import { shortBugId } from '@/lib/types'
 
 interface EnrichedTriageItem {
   bug: Bug
@@ -371,7 +372,7 @@ export default function DashboardPage() {
                     <div className="col-span-5 pr-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline">
-                          <Link href={`/bugs/${item.bug.id}`}>{item.bug.id}</Link>
+                          <Link href={`/bugs/${item.bug.id}`}>{shortBugId(item.bug.id)}</Link>
                         </span>
                       </div>
                       <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
@@ -499,7 +500,7 @@ export default function DashboardPage() {
                           {act.bug_id && (
                             <span className="font-semibold text-stone-900 dark:text-white">
                               <Link href={`/bugs/${act.bug_id}`} className="hover:underline">
-                                {act.bug_id}
+                                {shortBugId(act.bug_id)}
                               </Link>
                             </span>
                           )}
@@ -536,7 +537,7 @@ export default function DashboardPage() {
               <div key={item.code} className="flex items-start justify-between gap-3 text-xs">
                 <div>
                   <div className="font-bold text-orange-600 dark:text-orange-400 hover:underline">
-                    <Link href={`/bugs/${item.code}`}>{item.code}</Link>
+                    <Link href={`/bugs/${item.code}`}>{shortBugId(item.code)}</Link>
                   </div>
                   <div className="text-stone-700 dark:text-stone-300 truncate mt-0.5">
                     {item.title}

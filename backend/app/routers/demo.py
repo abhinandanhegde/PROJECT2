@@ -8,6 +8,7 @@ This is an ADMIN operation — uses the service-role client.
 """
 
 import uuid
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -16,6 +17,8 @@ from pydantic import BaseModel
 from app.supabase_client import get_service_role_client
 
 router = APIRouter(prefix="/api/demo", tags=["demo"])
+
+logger = logging.getLogger(__name__)
 
 
 class DemoSetupRequest(BaseModel):
@@ -125,8 +128,8 @@ async def setup_demo_account(body: DemoSetupRequest):
             if u.email == body.email:
                 user_id = u.id
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not list users: {e}")
 
     # ── Step 2: Create Supabase Auth user if needed ───────────
     if not user_id:
@@ -151,8 +154,8 @@ async def setup_demo_account(body: DemoSetupRequest):
             "email": body.email,
             "display_name": body.display_name,
         }, on_conflict="id").execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not upsert user: {e}")
 
     # ── Step 4: Check if data already seeded for this user ────
     try:
@@ -163,8 +166,8 @@ async def setup_demo_account(body: DemoSetupRequest):
                 "user_id": user_id,
                 "message": "Demo account already has data",
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not check existing projects: {e}")
 
     # ── Step 5: Seed projects ─────────────────────────────────
     project_ids = []
@@ -178,8 +181,12 @@ async def setup_demo_account(body: DemoSetupRequest):
                 "created_by": user_id,
             }).execute()
             project_ids.append(proj_id)
-        except Exception:
-            continue
+            logger.info(f"Created project: {p['name']}")
+        except Exception as e:
+            logger.error(f"Failed to create project {p['name']}: {e}")
+
+    if not project_ids:
+        raise HTTPException(status_code=500, detail="Failed to create any projects")
 
     # ── Step 6: Seed memberships (demo user is ADMIN on all) ──
     for proj_id in project_ids:
@@ -189,8 +196,8 @@ async def setup_demo_account(body: DemoSetupRequest):
                 "user_id": user_id,
                 "role": "ADMIN",
             }, on_conflict="project_id,user_id").execute()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to create membership: {e}")
 
     # ── Step 7: Seed components per project ───────────────────
     components_per_project = {}
@@ -205,16 +212,16 @@ async def setup_demo_account(body: DemoSetupRequest):
                     "name": name,
                 }).execute()
                 comps.append({"id": comp_id, "name": name})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to create component {name}: {e}")
         components_per_project[proj_id] = comps
 
-    # ── Step 8: Seed bugs ─────────────────────────────────────
+    # ── Step 8: Seed bugs (proper UUIDs, unique per project) ──
     all_bugs = []
     for proj_id in project_ids:
         comps = components_per_project.get(proj_id, [])
         for i, (title, desc, sev, pri, status) in enumerate(BUG_TEMPLATES):
-            bug_id = f"BUG-{100 + i}"
+            bug_id = str(uuid.uuid4())  # Proper UUID, unique every time
             comp = comps[i % len(comps)] if comps else None
             days_ago = (len(BUG_TEMPLATES) - i) * 2
             created = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
@@ -239,8 +246,10 @@ async def setup_demo_account(body: DemoSetupRequest):
             try:
                 db.table("bugs").upsert(bug_data, on_conflict="id").execute()
                 all_bugs.append(bug_data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to create bug '{title}': {e}")
+
+    logger.info(f"Seeded {len(all_bugs)} bugs across {len(project_ids)} projects")
 
     # ── Step 9: Seed comments ─────────────────────────────────
     comment_count = 0
@@ -248,35 +257,47 @@ async def setup_demo_account(body: DemoSetupRequest):
         for j in range(2):
             try:
                 db.table("comments").insert({
+                    "id": str(uuid.uuid4()),
                     "bug_id": bug["id"],
                     "author_id": user_id,
                     "body": COMMENTS[(hash(bug["id"]) + j) % len(COMMENTS)],
                 }).execute()
                 comment_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to create comment: {e}")
 
     # ── Step 10: Seed relationships ───────────────────────────
     rel_count = 0
-    for i in range(min(8, len(all_bugs) - 1)):
-        try:
-            db.table("relationships").upsert({
-                "source_bug_id": all_bugs[i]["id"],
-                "target_bug_id": all_bugs[i + 1]["id"],
-                "relationship_type": RELATIONSHIP_TYPES[i % len(RELATIONSHIP_TYPES)],
-                "created_by": user_id,
-            }, on_conflict="source_bug_id,target_bug_id,relationship_type").execute()
-            rel_count += 1
-        except Exception:
-            pass
+    bugs_by_project = {}
+    for bug in all_bugs:
+        pid = bug["project_id"]
+        if pid not in bugs_by_project:
+            bugs_by_project[pid] = []
+        bugs_by_project[pid].append(bug)
+
+    for proj_id, proj_bugs in bugs_by_project.items():
+        for i in range(min(5, len(proj_bugs) - 1)):
+            try:
+                db.table("relationships").upsert({
+                    "id": str(uuid.uuid4()),
+                    "source_bug_id": proj_bugs[i]["id"],
+                    "target_bug_id": proj_bugs[i + 1]["id"],
+                    "relationship_type": RELATIONSHIP_TYPES[i % len(RELATIONSHIP_TYPES)],
+                    "created_by": user_id,
+                }, on_conflict="source_bug_id,target_bug_id,relationship_type").execute()
+                rel_count += 1
+            except Exception as e:
+                logger.error(f"Failed to create relationship: {e}")
 
     # ── Step 11: Seed activity log ────────────────────────────
     activity_count = 0
     for proj_id in project_ids:
-        for bug in all_bugs[:10]:
+        proj_bugs = bugs_by_project.get(proj_id, [])
+        for bug in proj_bugs[:8]:
             for action in ["BUG_CREATED", "BUG_STATUS_CHANGED"]:
                 try:
                     db.table("activity_log").insert({
+                        "id": str(uuid.uuid4()),
                         "project_id": proj_id,
                         "bug_id": bug["id"],
                         "actor_id": user_id,
@@ -286,8 +307,27 @@ async def setup_demo_account(body: DemoSetupRequest):
                         "new_value": {"status": bug["status"]} if action == "BUG_STATUS_CHANGED" else {"title": bug["title"]},
                     }).execute()
                     activity_count += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to create activity: {e}")
+
+    # ── Step 12: Seed notifications ───────────────────────────
+    notif_count = 0
+    for proj_id in project_ids[:1]:
+        proj_bugs = bugs_by_project.get(proj_id, [])[:5]
+        for bug in proj_bugs:
+            try:
+                db.table("notifications").insert({
+                    "id": str(uuid.uuid4()),
+                    "user_id": user_id,
+                    "project_id": proj_id,
+                    "bug_id": bug["id"],
+                    "title": f"Bug assigned: {bug['title'][:50]}",
+                    "message": f"You have been assigned to {bug['title']}",
+                    "read": False,
+                }).execute()
+                notif_count += 1
+            except Exception as e:
+                logger.error(f"Failed to create notification: {e}")
 
     return {
         "status": "seeded",
@@ -297,5 +337,6 @@ async def setup_demo_account(body: DemoSetupRequest):
         "comments": comment_count,
         "relationships": rel_count,
         "activity_entries": activity_count,
+        "notifications": notif_count,
         "message": f"Demo account ready with {len(all_bugs)} bugs across {len(project_ids)} projects",
     }

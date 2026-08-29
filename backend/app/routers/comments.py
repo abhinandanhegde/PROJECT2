@@ -52,15 +52,17 @@ async def list_comments(
     db = auth["db"]
     offset = (page - 1) * per_page
     result = (
-        db.table("comments").select("*, users:author_id(display_name, email)", count="exact")
+        db.table("comments").select("*, users:author_id(display_name, email)")
         .eq("bug_id", bug_id)
         .order("created_at", desc=False)
         .range(offset, offset + per_page - 1)
         .execute()
     )
+    # Get total count without join
+    count_result = db.table("comments").select("id", count="exact").eq("bug_id", bug_id).execute()
     return {
         "data": result.data,
-        "total": result.count or 0,
+        "total": count_result.count or len(result.data or []),
         "page": page,
         "per_page": per_page,
     }

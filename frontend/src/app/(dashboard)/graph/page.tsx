@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import type { Bug, Relationship } from '@/lib/types'
+import { shortBugId } from '@/lib/types'
 
 interface GraphNode {
   id: string
@@ -348,7 +349,7 @@ export default function GraphPage() {
                     fill="white"
                     style={{ pointerEvents: 'none' }}
                   >
-                    {node.id.replace('BUG-', '')}
+                    {shortBugId(node.id)}
                   </text>
                   {/* Title below */}
                   <text
@@ -379,7 +380,7 @@ export default function GraphPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: STATUS_COLORS[node.status] }} />
-                      <span className="font-mono font-bold text-sm text-orange-600 dark:text-orange-400">{node.id}</span>
+                      <span className="font-mono font-bold text-sm text-orange-600 dark:text-orange-400">{shortBugId(node.id)}</span>
                       <span className="text-xs text-stone-500">•</span>
                       <span className="text-xs text-stone-600 dark:text-stone-300 font-medium">{node.title}</span>
                     </div>
@@ -405,7 +406,7 @@ export default function GraphPage() {
                           onClick={() => handleNodeClick(otherId)}
                           className="px-2 py-1 rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-medium text-stone-700 dark:text-stone-300 hover:border-orange-500 transition-colors"
                         >
-                          {direction} {otherId} ({e.type})
+                          {direction} {shortBugId(otherId)} ({e.type})
                         </button>
                       )
                     })}

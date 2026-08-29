@@ -18,25 +18,36 @@ async def create_project(
     project: ProjectCreate,
     auth=Depends(get_current_user_with_client),
 ):
+    import uuid
     user = auth["user"]
     db = auth["db"]
 
-    # Use RPC to create project (bypasses direct INSERT RLS restrictions if necessary,
-    # or executes with DEFINER privileges)
-    result = db.rpc("create_project", {
-        "p_name": project.name,
-        "p_description": project.description or ""
+    project_id = str(uuid.uuid4())
+
+    # Insert project
+    result = db.table("projects").insert({
+        "id": project_id,
+        "name": project.name,
+        "description": project.description or "",
+        "created_by": user["id"],
     }).execute()
 
     if not result.data:
         raise ValidationError("Failed to create project")
 
-    created = result.data
+    # Add creator as ADMIN member
+    db.table("project_members").insert({
+        "project_id": project_id,
+        "user_id": user["id"],
+        "role": "ADMIN",
+    }).execute()
+
+    created = result.data[0]
 
     log_activity(
-        db, project_id=created["id"], actor_id=user["id"],
+        db, project_id=project_id, actor_id=user["id"],
         action="PROJECT_CREATED", entity_type="PROJECT",
-        entity_id=created["id"], details={"name": project.name},
+        entity_id=project_id, details={"name": project.name},
     )
 
     return created
@@ -65,20 +76,20 @@ async def list_projects(
     offset = (page - 1) * per_page
     result = (
         db.table("projects")
-        .select("*", count="exact")
+        .select("*")
         .in_("id", project_ids)
         .order("created_at", desc=True)
         .range(offset, offset + per_page - 1)
         .execute()
     )
+    count_result = db.table("projects").select("id", count="exact").in_("id", project_ids).execute()
 
     return {
         "data": result.data,
-        "total": result.count or 0,
+        "total": count_result.count or len(result.data or []),
         "page": page,
         "per_page": per_page,
     }
-
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
@@ -163,7 +174,7 @@ async def get_project_stats(
 
     members_result = (
         db.table("project_members")
-        .select("id", count="exact")
+        .select("id")
         .eq("project_id", project_id)
         .execute()
     )
@@ -172,7 +183,7 @@ async def get_project_stats(
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     activity_result = (
         db.table("activity_log")
-        .select("id", count="exact")
+        .select("id")
         .eq("project_id", project_id)
         .gte("created_at", week_ago)
         .execute()
@@ -186,6 +197,6 @@ async def get_project_stats(
         bugs_by_severity=bugs_by_severity,
         bugs_by_priority=bugs_by_priority,
         bugs_by_status=bugs_by_status,
-        recent_activity=activity_result.count or 0,
-        member_count=members_result.count or 0,
+        recent_activity=len(activity_result.data or []),
+        member_count=len(members_result.data or []),
     )
