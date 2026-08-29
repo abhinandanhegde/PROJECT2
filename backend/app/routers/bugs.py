@@ -75,7 +75,7 @@ async def list_bugs(
     user = auth["user"]
     require_project_role(db, project_id, user["id"])
 
-    query = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)").eq("project_id", project_id)
+    query = db.table("bugs").select("*").eq("project_id", project_id)
 
     if status:
         query = query.eq("status", status)
@@ -95,9 +95,25 @@ async def list_bugs(
     query = query.range(offset, offset + per_page - 1)
     result = query.execute()
 
+    # Get total count without join
+    count_result = db.table("bugs").select("id", count="exact").eq("project_id", project_id)
+    if status:
+        count_result = count_result.eq("status", status)
+    if severity:
+        count_result = count_result.eq("severity", severity)
+    if priority:
+        count_result = count_result.eq("priority", priority)
+    if assignee_id:
+        count_result = count_result.eq("assignee_id", assignee_id)
+    if component_id:
+        count_result = count_result.eq("component_id", component_id)
+    if search:
+        count_result = count_result.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
+    count_result.execute()
+
     return {
         "data": result.data or [],
-        "total": len(result.data or []),
+        "total": count_result.count or len(result.data or []),
         "page": page,
         "per_page": per_page,
     }
@@ -247,7 +263,7 @@ async def search_bugs(
     offset = (page - 1) * per_page
     result = (
         db.table("bugs")
-        .select("*", count="exact")
+        .select("*")
         .or_(f"title.ilike.%{q}%,description.ilike.%{q}%")
         .order("updated_at", desc=True)
         .range(offset, offset + per_page - 1)
@@ -255,7 +271,7 @@ async def search_bugs(
     )
     return {
         "data": result.data or [],
-        "total": result.count or 0,
+        "total": len(result.data or []),
         "page": page,
         "per_page": per_page,
     }

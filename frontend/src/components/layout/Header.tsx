@@ -177,7 +177,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
           />
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
             <kbd className="px-1.5 py-0.5 text-xs font-mono font-medium text-stone-400 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded">
-              ⌘K
+              {typeof navigator !== 'undefined' && navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl+K'}
             </kbd>
           </div>
         </form>
@@ -348,7 +348,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
               <button
                 onClick={() => {
                   setMenuOpen(false)
-                  router.push('/bugs?tab=assigned')
+                  router.push('/bugs')
                 }}
                 className="w-full text-left px-4 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
               >

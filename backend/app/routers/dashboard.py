@@ -19,7 +19,7 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
     memberships = db.table("project_members").select("project_id").eq("user_id", user_id).execute()
     project_ids = [m["project_id"] for m in (memberships.data or [])]
 
-    reported = db.table("bugs").select("id", count="exact").eq("reporter_id", user_id).execute()
+    reported = db.table("bugs").select("id").eq("reporter_id", user_id).execute()
     assigned = db.table("bugs").select("status, severity").eq("assignee_id", user_id).execute()
     assigned_bugs = assigned.data or []
 
@@ -33,12 +33,12 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
     recent_activity_count = 0
     if project_ids:
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        activity = db.table("activity_log").select("id", count="exact").in_("project_id", project_ids).gte("created_at", week_ago).execute()
-        recent_activity_count = activity.count or 0
+        activity = db.table("activity_log").select("id").in_("project_id", project_ids).gte("created_at", week_ago).execute()
+        recent_activity_count = len(activity.data or [])
 
     return {
         "total_projects": len(project_ids),
-        "total_bugs_reported": reported.count or 0,
+        "total_bugs_reported": len(reported.data or []),
         "total_bugs_assigned": len(assigned_bugs),
         "open_assigned": open_assigned,
         "bugs_by_severity": bugs_by_severity,

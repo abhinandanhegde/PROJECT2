@@ -126,60 +126,6 @@ export default function GraphPage() {
     const currentNodes = [...nodes]
     const edgeList = edges
 
-    function simulate() {
-      const { width, height } = dimensions
-      const centerX = width / 2
-      const centerY = height / 2
-
-      for (let i = 0; i < currentNodes.length; i++) {
-        const node = currentNodes[i]
-
-        // Gravity toward center
-        node.vx += (centerX - node.x) * 0.001
-        node.vy += (centerY - node.y) * 0.001
-
-        // Repulsion between nodes
-        for (let j = 0; j < currentNodes.length; j++) {
-          if (i === j) continue
-          const other = currentNodes[j]
-          const dx = node.x - other.x
-          const dy = node.y - other.y
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          const force = 2000 / (dist * dist)
-          node.vx += (dx / dist) * force
-          node.vy += (dy / dist) * force
-        }
-
-        // Attraction along edges
-        for (const edge of edgeList) {
-          let other: GraphNode | undefined
-          if (edge.source === node.id) other = currentNodes.find((n) => n.id === edge.target)
-          if (edge.target === node.id) other = currentNodes.find((n) => n.id === edge.source)
-          if (other) {
-            const dx = other.x - node.x
-            const dy = other.y - node.y
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1
-            const force = (dist - 120) * 0.005
-            node.vx += (dx / dist) * force
-            node.vy += (dy / dist) * force
-          }
-        }
-
-        // Apply velocity with damping
-        node.vx *= 0.9
-        node.vy *= 0.9
-        node.x += node.vx
-        node.y += node.vy
-
-        // Keep in bounds
-        node.x = Math.max(40, Math.min(width - 40, node.x))
-        node.y = Math.max(40, Math.min(height - 40, node.y))
-      }
-
-      setNodes([...currentNodes])
-      frameId = requestAnimationFrame(simulate)
-    }
-
     // Run for a fixed number of frames then stop
     let frameCount = 0
     function runFrames() {
