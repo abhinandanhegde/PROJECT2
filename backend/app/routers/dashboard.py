@@ -57,8 +57,12 @@ async def dashboard_recent(
     project_ids = [m["project_id"] for m in (memberships.data or [])]
     if not project_ids:
         return {"data": []}
-    result = db.table("activity_log").select("*").in_("project_id", project_ids).order("created_at", desc=True).limit(limit).execute()
-    return {"data": result.data or []}
+    result = db.table("activity_log").select("*, actor:actor_id(display_name)").in_("project_id", project_ids).order("created_at", desc=True).limit(limit).execute()
+    entries = result.data or []
+    for e in entries:
+        actor = e.pop("actor", None)
+        e["actor_name"] = actor.get("display_name") if isinstance(actor, dict) else actor
+    return {"data": entries}
 
 
 @router.get("/dashboard/assigned")

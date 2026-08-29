@@ -32,9 +32,11 @@ async def create_relationship(
 
     project_id = _get_bug_project_id(db, bug_id)
 
-    related = db.table("bugs").select("id").eq("id", rel.target_bug_id).execute()
+    related = db.table("bugs").select("project_id").eq("id", rel.target_bug_id).execute()
     if not related.data:
         raise NotFoundError("Related bug not found")
+    if related.data[0]["project_id"] != project_id:
+        raise ValidationError("Related bug must belong to the same project")
 
     existing = (
         db.table("relationships").select("id")

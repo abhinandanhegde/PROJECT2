@@ -90,6 +90,8 @@ class BugResponse(BaseModel):
     component_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reporter_id: str
+    reporter_name: Optional[str] = None
+    assignee_name: Optional[str] = None
     resolution: Optional[str] = None
     duplicate_of: Optional[str] = None
     created_at: str

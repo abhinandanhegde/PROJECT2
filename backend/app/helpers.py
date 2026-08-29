@@ -63,9 +63,9 @@ def log_activity(
             "project_id": project_id,
             "actor_id": actor_id,
             "action": action,
-            "entity_type": entity_type,
+            "entity_type": entity_type.upper(),
             "entity_id": entity_id,
-            "bug_id": entity_id if entity_type == "BUG" else None,
+            "bug_id": entity_id if entity_type.upper() == "BUG" else None,
             "new_value": details,
             "old_value": old_value,
         }).execute()

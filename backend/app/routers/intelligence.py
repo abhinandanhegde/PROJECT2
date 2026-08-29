@@ -388,7 +388,7 @@ async def detect_duplicates(
         snippet = body.description[:120]
         desc_hits = (
             db.table("bugs")
-            .select("id, title, status, severity, priority")
+            .select("id, title, description, status, severity, priority")
             .eq("project_id", project_id)
             .ilike("description", f"%{snippet}%")
             .limit(body.limit * 2)
@@ -396,7 +396,7 @@ async def detect_duplicates(
         )
         for row in (desc_hits.data or []):
             if row["id"] not in seen_ids:
-                sim = _jaccard_similarity(body.description, row.get("title", ""))
+                sim = _jaccard_similarity(body.description, row.get("description", ""))
                 if sim >= body.threshold:
                     candidates.append(
                         DuplicateCandidate(

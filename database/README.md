@@ -12,7 +12,12 @@ Apply SQL files in this order via the **Supabase SQL Editor** (Dashboard → SQL
 3. auth_trigger.sql    — Supabase Auth → users sync trigger
 4. audit_function.sql  — log_activity() function for audit trail
 5. project_creation.sql — Atomic project + admin membership creation
+6. fix_rls_policies.sql — RLS policy fixes (comments UPDATE, activity_log INSERT, notifications)
 ```
+
+> **Note:** `fix_rls_policies.sql` supersedes the older `fix_rls_inserts.sql`.
+> The older file's `notifications` policy (`WITH CHECK (true)`) is insecure and the
+> `activity_log` policy lacked a project-membership check — do not apply it.
 
 **⚠️ Order matters.** RLS depends on tables existing. Auth trigger depends on the `users` table.
 

@@ -18,31 +18,22 @@ async def create_project(
     project: ProjectCreate,
     auth=Depends(get_current_user_with_client),
 ):
-    import uuid
     user = auth["user"]
     db = auth["db"]
 
-    project_id = str(uuid.uuid4())
-
-    # Insert project
-    result = db.table("projects").insert({
-        "id": project_id,
-        "name": project.name,
-        "description": project.description or "",
-        "created_by": user["id"],
+    # Atomically create the project AND the creator's ADMIN membership via the
+    # SECURITY DEFINER RPC. Doing these as two separate inserts would fail RLS
+    # (the creator isn't a member yet when the ADMIN insert runs).
+    result = db.rpc("create_project", {
+        "p_name": project.name,
+        "p_description": project.description or "",
     }).execute()
 
     if not result.data:
         raise ValidationError("Failed to create project")
 
-    # Add creator as ADMIN member
-    db.table("project_members").insert({
-        "project_id": project_id,
-        "user_id": user["id"],
-        "role": "ADMIN",
-    }).execute()
-
     created = result.data[0]
+    project_id = created["id"]
 
     log_activity(
         db, project_id=project_id, actor_id=user["id"],

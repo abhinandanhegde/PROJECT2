@@ -194,7 +194,7 @@ def _seed_all(db, user_id: str) -> dict:
                 try:
                     db.table("activity_log").insert({
                         "id": str(uuid.uuid4()), "project_id": pid, "bug_id": b["id"],
-                        "actor_id": user_id, "action": action, "entity_type": "bug",
+                        "actor_id": user_id, "action": action, "entity_type": "BUG",
                         "entity_id": b["id"],
                         "new_value": {"status": b["status"]} if action == "BUG_STATUS_CHANGED" else {"title": b["title"]},
                     }).execute()

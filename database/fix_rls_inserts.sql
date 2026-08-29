@@ -1,6 +1,12 @@
 -- ============================================================
--- FIX: Add missing INSERT policies for activity_log and notifications
--- Run this in Supabase SQL Editor
+-- ⚠️ SUPERSEDED — DO NOT APPLY
+-- ============================================================
+-- This file is superseded by `fix_rls_policies.sql`.
+-- Its `notifications` policy used `WITH CHECK (true)` (insecure) and its
+-- `activity_log` policy had no project-membership check.
+-- Use `fix_rls_policies.sql` instead.
+-- ============================================================
+-- (Kept for reference only. The original content is below.)
 -- ============================================================
 
 -- Activity log: allow authenticated users to insert audit entries

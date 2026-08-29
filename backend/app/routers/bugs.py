@@ -75,7 +75,7 @@ async def list_bugs(
     user = auth["user"]
     require_project_role(db, project_id, user["id"])
 
-    query = db.table("bugs").select("*").eq("project_id", project_id)
+    query = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)").eq("project_id", project_id)
 
     if status:
         query = query.eq("status", status)
@@ -88,7 +88,7 @@ async def list_bugs(
     if component_id:
         query = query.eq("component_id", component_id)
     if search:
-        query = query.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
+        query = query.or_(_or_search_filter(search))
 
     query = query.order(sort_by, desc=(sort_order == "desc"))
     offset = (page - 1) * per_page
@@ -108,11 +108,11 @@ async def list_bugs(
     if component_id:
         count_result = count_result.eq("component_id", component_id)
     if search:
-        count_result = count_result.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
+        count_result = count_result.or_(_or_search_filter(search))
     count_resp = count_result.execute()
 
     return {
-        "data": result.data or [],
+        "data": [_attach_names(b) for b in (result.data or [])],
         "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
@@ -130,7 +130,9 @@ async def get_bug(
     result = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)").eq("id", bug_id).eq("project_id", project_id).execute()
     if not result.data:
         raise NotFoundError("Bug not found")
-    return result.data[0]
+    bug = result.data[0]
+    _attach_names(bug)
+    return bug
 
 
 @router.put("/projects/{project_id}/bugs/{bug_id}", response_model=BugResponse)
@@ -140,7 +142,7 @@ async def update_bug(
 ):
     user = auth["user"]
     db = auth["db"]
-    require_project_role(db, project_id, user["id"])
+    role = require_project_role(db, project_id, user["id"])
 
     existing = db.table("bugs").select("*").eq("id", bug_id).eq("project_id", project_id).execute()
     if not existing.data:
@@ -150,6 +152,17 @@ async def update_bug(
     updates = bug.model_dump(exclude_none=True)
     if not updates:
         raise ValidationError("No fields to update")
+
+    # REPORTER may only edit their own bugs, and cannot escalate/assign.
+    if role == "REPORTER":
+        if current["reporter_id"] != user["id"]:
+            raise AuthorizationError("REPORTER can only edit their own bugs")
+        restricted = {"assignee_id", "severity", "priority", "component_id"}
+        offending = restricted & set(updates.keys())
+        if offending:
+            raise AuthorizationError(
+                f"REPORTER cannot change: {', '.join(sorted(offending))}"
+            )
 
     for key in ("severity", "priority"):
         if key in updates and hasattr(updates[key], "value"):
@@ -263,15 +276,21 @@ async def search_bugs(
     offset = (page - 1) * per_page
     result = (
         db.table("bugs")
-        .select("*")
-        .or_(f"title.ilike.%{q}%,description.ilike.%{q}%")
+        .select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)")
+        .or_(_or_search_filter(q))
         .order("updated_at", desc=True)
         .range(offset, offset + per_page - 1)
         .execute()
     )
+    count_resp = (
+        db.table("bugs")
+        .select("id")
+        .or_(_or_search_filter(q))
+        .execute()
+    )
     return {
-        "data": result.data or [],
-        "total": len(result.data or []),
+        "data": [_attach_names(b) for b in (result.data or [])],
+        "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
     }
@@ -284,3 +303,29 @@ def _validate_assignee(db, project_id: str, assignee_id: str) -> None:
     )
     if not membership.data:
         raise ValidationError("Assignee is not a member of this project")
+
+
+def _or_search_filter(value: str) -> str:
+    """
+    Build a safe PostgREST or() filter for a free-text user query.
+    Escapes commas, parens, quotes and ilike wildcards so user input
+    cannot break the filter syntax or inject operators.
+    """
+    value = value.replace("%", r"\%").replace("_", r"\_").replace("*", r"\*")
+    value = value.replace(",", r"\,").replace("(", r"\(").replace(")", r"\)")
+    value = value.replace('"', r"\"").replace("'", r"\'")
+    return f"title.ilike.%{value}%,description.ilike.%{value}%"
+
+
+def _attach_names(bug: dict) -> dict:
+    """
+    Map nested joins `reporter`/`assignee` ({id, display_name}) onto flat
+    `reporter_name`/`assignee_name` fields for the frontend.
+    """
+    reporter = bug.pop("reporter", None)
+    assignee = bug.pop("assignee", None)
+    if reporter is not None:
+        bug["reporter_name"] = reporter.get("display_name") if isinstance(reporter, dict) else reporter
+    if assignee is not None:
+        bug["assignee_name"] = assignee.get("display_name") if isinstance(assignee, dict) else assignee
+    return bug
