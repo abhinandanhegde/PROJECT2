@@ -47,9 +47,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
   const navItems = [
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
-    { label: 'My Issues', href: '/my-issues', icon: IssuesIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
-    { label: 'Triage', href: '/bugs?status=NEW', icon: TriageIcon, badge: '12' },
+    { label: 'Triage', href: '/bugs?tab=assigned&status=NEW', icon: TriageIcon },
     { label: 'Graph', href: '/graph', icon: GraphIcon },
     { label: 'Analytics', href: '/analytics', icon: AnalyticsIcon },
     { label: 'Reports', href: '/reports', icon: ReportsIcon },
@@ -114,17 +113,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                   />
                   <span>{item.label}</span>
                 </div>
-                {item.badge && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
+
               </Link>
             )
           })}

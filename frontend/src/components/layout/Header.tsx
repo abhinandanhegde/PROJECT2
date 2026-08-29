@@ -348,7 +348,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
               <button
                 onClick={() => {
                   setMenuOpen(false)
-                  router.push('/my-issues')
+                  router.push('/bugs?tab=assigned')
                 }}
                 className="w-full text-left px-4 py-2 text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
               >
