@@ -85,10 +85,8 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     })
 
     const stored = localStorage.getItem('theme')
-    const isDark =
-      stored === 'dark' ||
-      (stored !== 'light' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
+    // Default to light theme. Only go dark if user explicitly chose dark.
+    const isDark = stored === 'dark'
     setDarkMode(isDark)
     document.documentElement.classList.toggle('dark', isDark)
 

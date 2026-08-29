@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { signUp } from '@/lib/auth'
+import { signUp, signIn } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { BugIcon } from '@/components/ui/Icons'
 
@@ -32,6 +32,30 @@ export default function SignupPage() {
     setLoading(false)
     if (signUpError) {
       setError(signUpError.message)
+      return
+    }
+    router.push('/')
+  }
+
+  async function handleDemoSignup() {
+    setError('')
+    setLoading(true)
+
+    const demoEmail = `demo-${Date.now()}@bugflow.demo`
+    const demoPassword = 'DemoPass123!'
+    const demoName = 'Demo User'
+
+    const { error: signUpError } = await signUp(demoEmail, demoPassword, demoName)
+    if (signUpError) {
+      setLoading(false)
+      setError('Demo setup failed. Please sign up manually.')
+      return
+    }
+
+    const { error: signInError } = await signIn(demoEmail, demoPassword)
+    setLoading(false)
+    if (signInError) {
+      setError(signInError.message)
       return
     }
     router.push('/')
@@ -111,14 +135,26 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-xs text-stone-500 dark:text-stone-400">
-            Already have an account?{' '}
-            <Link
-              href="/login"
-              className="font-semibold text-orange-600 hover:text-orange-500"
+          <div className="mt-6">
+            {/* Demo Account Button */}
+            <button
+              type="button"
+              onClick={handleDemoSignup}
+              disabled={loading}
+              className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 text-stone-600 dark:text-stone-400 font-semibold text-xs hover:border-orange-400 hover:text-orange-600 dark:hover:border-orange-500 dark:hover:text-orange-400 transition-colors cursor-pointer disabled:opacity-50"
             >
-              Sign in
-            </Link>
+              {loading ? 'Setting up demo...' : '⚡ Try Demo Account — Instant access'}
+            </button>
+
+            <div className="mt-4 text-center text-xs text-stone-500 dark:text-stone-400">
+              Already have an account?{' '}
+              <Link
+                href="/login"
+                className="font-semibold text-orange-600 hover:text-orange-500"
+              >
+                Sign in
+              </Link>
+            </div>
           </div>
         </div>
       </div>

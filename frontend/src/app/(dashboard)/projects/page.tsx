@@ -3,18 +3,83 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Project } from '@/lib/types'
+import type { Project, Bug } from '@/lib/types'
+
+interface ProjectWithStats extends Project {
+  totalBugs: number
+  openBugs: number
+  resolvedBugs: number
+  memberCount: number
+}
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<ProjectWithStats[]>([])
   const [loading, setLoading] = useState(true)
+  const [showCreate, setShowCreate] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    api.getProjects()
-      .then((res) => setProjects(res?.data || []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    loadProjects()
   }, [])
+
+  async function loadProjects() {
+    setLoading(true)
+    try {
+      const res = await api.getProjects()
+      const projs: Project[] = res?.data || []
+
+      const enriched: ProjectWithStats[] = []
+      for (const p of projs) {
+        try {
+          const [bugRes, memRes] = await Promise.allSettled([
+            api.getBugs(p.id, { per_page: '200' }),
+            api.getMembers(p.id),
+          ])
+
+          const bugs: Bug[] = bugRes.status === 'fulfilled' ? bugRes.value?.data || [] : []
+          const members = memRes.status === 'fulfilled' ? memRes.value?.data || [] : []
+
+          const openStatuses = ['NEW', 'CONFIRMED', 'IN_PROGRESS', 'REOPENED']
+          const resolvedStatuses = ['RESOLVED', 'VERIFIED', 'CLOSED']
+
+          enriched.push({
+            ...p,
+            totalBugs: bugs.length,
+            openBugs: bugs.filter((b) => openStatuses.includes(b.status)).length,
+            resolvedBugs: bugs.filter((b) => resolvedStatuses.includes(b.status)).length,
+            memberCount: members.length,
+          })
+        } catch {
+          enriched.push({ ...p, totalBugs: 0, openBugs: 0, resolvedBugs: 0, memberCount: 0 })
+        }
+      }
+
+      setProjects(enriched)
+    } catch {
+      // Silent fail
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    setCreating(true)
+    try {
+      await api.createProject({ name: newName.trim(), description: newDesc.trim() || undefined })
+      setNewName('')
+      setNewDesc('')
+      setShowCreate(false)
+      loadProjects()
+    } catch {
+      // Silent fail
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -29,38 +94,137 @@ export default function ProjectsPage() {
             Projects
           </h1>
           <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
-            Manage your projects and their team members.
+            Manage your projects, view health, and track team activity.
           </p>
         </div>
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          className="px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-md shadow-orange-500/20 transition-colors cursor-pointer"
+        >
+          {showCreate ? 'Cancel' : '+ New Project'}
+        </button>
       </div>
 
+      {/* Create Project Form */}
+      {showCreate && (
+        <form onSubmit={handleCreate} className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 uppercase tracking-wider mb-1">Project Name</label>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="My Awesome Project"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 uppercase tracking-wider mb-1">Description (optional)</label>
+            <input
+              type="text"
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              placeholder="A brief description of the project"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-800 text-sm text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={creating}
+              className="px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-md transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {creating ? 'Creating...' : 'Create Project'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Project Cards */}
       {loading ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((n) => (
             <div key={n} className="animate-pulse bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 space-y-3">
               <div className="w-1/3 h-5 bg-stone-200 dark:bg-stone-800 rounded" />
               <div className="w-2/3 h-3 bg-stone-200 dark:bg-stone-800 rounded" />
+              <div className="flex gap-4 mt-4">
+                <div className="h-8 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+                <div className="h-8 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+                <div className="h-8 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+              </div>
             </div>
           ))}
         </div>
       ) : projects.length === 0 ? (
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-12 text-center border border-[#eee9e2] dark:border-stone-800">
+          <div className="w-16 h-16 rounded-2xl bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400 flex items-center justify-center mx-auto mb-4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-8 h-8">
+              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </div>
           <h3 className="text-base font-bold text-stone-900 dark:text-white">No projects yet</h3>
-          <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">Create your first project to start tracking bugs.</p>
+          <p className="text-sm text-stone-500 dark:text-stone-400 mt-1 mb-4">Create your first project to start tracking bugs.</p>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold transition-colors cursor-pointer"
+          >
+            + Create Project
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => (
-            <Link key={p.id} href={`/bugs`} className="block bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm hover:border-orange-500/40 dark:hover:border-orange-500/40 transition-all">
-              <h3 className="font-bold text-base text-stone-900 dark:text-white">{p.name}</h3>
-              {p.description && (
-                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 line-clamp-2">{p.description}</p>
-              )}
-              <div className="text-xs text-stone-400 mt-3">
-                Created {new Date(p.created_at).toLocaleDateString()}
-              </div>
-            </Link>
-          ))}
+          {projects.map((p) => {
+            const healthPct = p.totalBugs > 0 ? Math.round((p.resolvedBugs / p.totalBugs) * 100) : 100
+            const healthColor = healthPct >= 70 ? 'text-emerald-600' : healthPct >= 40 ? 'text-amber-600' : 'text-red-600'
+
+            return (
+              <Link
+                key={p.id}
+                href="/bugs"
+                className="block bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm hover:border-orange-500/40 dark:hover:border-orange-500/40 transition-all group"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-base text-stone-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
+                      {p.name}
+                    </h3>
+                    {p.description && (
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 line-clamp-2">{p.description}</p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <div className={`text-lg font-bold ${healthColor}`}>{healthPct}%</div>
+                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">Health</div>
+                  </div>
+                </div>
+
+                {/* Stats row */}
+                <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
+                  <div className="text-center">
+                    <div className="text-sm font-bold text-stone-900 dark:text-white">{p.totalBugs}</div>
+                    <div className="text-[10px] text-stone-400">Total</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-bold text-orange-600 dark:text-orange-400">{p.openBugs}</div>
+                    <div className="text-[10px] text-stone-400">Open</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.resolvedBugs}</div>
+                    <div className="text-[10px] text-stone-400">Resolved</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-bold text-stone-900 dark:text-white">{p.memberCount}</div>
+                    <div className="text-[10px] text-stone-400">Members</div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-stone-400 mt-3">
+                  Created {new Date(p.created_at).toLocaleDateString()}
+                </div>
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>

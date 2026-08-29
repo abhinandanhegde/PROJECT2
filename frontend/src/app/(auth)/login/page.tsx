@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { signIn } from '@/lib/auth'
+import { signIn, signUp } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { BugIcon } from '@/components/ui/Icons'
 
@@ -28,6 +28,36 @@ export default function LoginPage() {
 
     const { error: signInError } = await signIn(email, password)
 
+    setLoading(false)
+    if (signInError) {
+      setError(signInError.message)
+      return
+    }
+    router.push('/')
+  }
+
+  async function handleDemoLogin() {
+    setError('')
+    setLoading(true)
+
+    // Create a demo account on the fly, then sign in
+    const demoEmail = `demo-${Date.now()}@bugflow.demo`
+    const demoPassword = 'DemoPass123!'
+    const demoName = 'Demo User'
+
+    const { error: signUpError } = await signUp(demoEmail, demoPassword, demoName)
+    if (signUpError) {
+      // If signup fails, try signing in with existing demo
+      const { error: signInError } = await signIn(demoEmail, demoPassword)
+      setLoading(false)
+      if (signInError) {
+        setError('Demo account setup failed. Please sign up manually.')
+        return
+      }
+    }
+
+    // Sign in with the demo account
+    const { error: signInError } = await signIn(demoEmail, demoPassword)
     setLoading(false)
     if (signInError) {
       setError(signInError.message)
@@ -96,14 +126,26 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-xs text-stone-500 dark:text-stone-400">
-            Don&apos;t have an account?{' '}
-            <Link
-              href="/signup"
-              className="font-semibold text-orange-600 hover:text-orange-500"
+          <div className="mt-6">
+            {/* Demo Account Button */}
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={loading}
+              className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-stone-300 dark:border-stone-600 text-stone-600 dark:text-stone-400 font-semibold text-xs hover:border-orange-400 hover:text-orange-600 dark:hover:border-orange-500 dark:hover:text-orange-400 transition-colors cursor-pointer disabled:opacity-50"
             >
-              Sign up
-            </Link>
+              {loading ? 'Setting up demo...' : '⚡ Try Demo Account — No signup needed'}
+            </button>
+
+            <div className="mt-4 text-center text-xs text-stone-500 dark:text-stone-400">
+              Don&apos;t have an account?{' '}
+              <Link
+                href="/signup"
+                className="font-semibold text-orange-600 hover:text-orange-500"
+              >
+                Sign up
+              </Link>
+            </div>
           </div>
         </div>
       </div>
