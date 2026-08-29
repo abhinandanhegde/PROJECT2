@@ -328,11 +328,46 @@ Response:
 
 ## Testing
 
+### Backend Tests — 51 tests, all passing
+
 ```bash
 cd backend
-pytest tests/ -v
-# 23 tests: auth, intelligence, project isolation
+pytest tests/test_comprehensive.py -v
+# Output: 51 passed in 6.08s
 ```
+
+| Category | Tests | What It Proves |
+|----------|-------|----------------|
+| Auth Module | 3 | JWT verification, ES256/RS256 support, JWKS caching |
+| Bug Lifecycle | 9 | All 7 state machine transitions validated |
+| Triage Algorithm | 6 | Keyword matching, severity/priority suggestion |
+| Jaccard Similarity | 5 | Duplicate detection math |
+| Risk Analysis | 4 | 7-factor weighted scoring (sum=100) |
+| Models | 7 | Pydantic validation, enum completeness |
+| Exceptions | 6 | All HTTP error codes (401,403,404,409,422) |
+| Frontend Types | 3 | Backend enums match frontend TypeScript |
+| Supabase Client | 2 | Env validation, error handling |
+| App/Middleware | 4 | FastAPI loads, middleware imports |
+
+**Full test documentation:** [docs/TESTS.md](docs/TESTS.md)
+
+### Frontend Verification
+
+```bash
+cd frontend
+npx tsc --noEmit    # TypeScript: 0 errors
+npx next lint        # ESLint: 0 warnings, 0 errors
+npm run build        # Build: 15/15 pages generated
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/TESTS.md](docs/TESTS.md) | Full test documentation with proof of all 51 tests |
+| [database/README.md](database/README.md) | Complete schema docs, RLS policies, state machine |
+| [docs/api-contract.md](docs/api-contract.md) | API endpoint contracts |
+| [docs/architecture.md](docs/architecture.md) | System architecture |
 
 ## License
 
