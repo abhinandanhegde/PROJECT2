@@ -156,13 +156,13 @@ export default function DashboardPage() {
       setActivityLoading(false)
     })
 
-    // PHASE 2: Triage queue — lazy-load after 300ms so stats render first
+    // PHASE 2: Triage queue — lazy-load after 300ms, no status filter
     setTimeout(() => {
       api.getProjects()
         .then(async (projRes) => {
           const projects = projRes?.data || []
           if (projects.length > 0) {
-            const bugRes = await api.getBugs(projects[0].id, { status: 'NEW', per_page: '5' })
+            const bugRes = await api.getBugs(projects[0].id, { per_page: '10' })
             loadTriageData(projects[0].id, bugRes?.data || [])
           } else {
             setTriageLoading(false)

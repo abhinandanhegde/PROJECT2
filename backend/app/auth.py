@@ -133,6 +133,7 @@ async def verify_supabase_token(token: str) -> dict:
         decode_options = {
             "verify_exp": True,
             "verify_aud": True,
+            "verify_iat": False,  # Supabase tokens can have clock skew
             "require": ["exp", "sub", "aud"],
         }
 

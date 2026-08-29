@@ -95,8 +95,8 @@ async def list_bugs(
     query = query.range(offset, offset + per_page - 1)
     result = query.execute()
 
-    # Get total count without join
-    count_result = db.table("bugs").select("id", count="exact").eq("project_id", project_id)
+    # Get total count (separate query, no joins)
+    count_result = db.table("bugs").select("id").eq("project_id", project_id)
     if status:
         count_result = count_result.eq("status", status)
     if severity:
@@ -109,11 +109,11 @@ async def list_bugs(
         count_result = count_result.eq("component_id", component_id)
     if search:
         count_result = count_result.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
-    count_result.execute()
+    count_resp = count_result.execute()
 
     return {
         "data": result.data or [],
-        "total": count_result.count or len(result.data or []),
+        "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
     }
