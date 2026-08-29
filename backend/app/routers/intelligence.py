@@ -565,3 +565,256 @@ async def analyze_risk(
         explanation="; ".join(notes) if notes else "Low risk based on available signals",
         bug_id=body.bug_id,
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  § 6 — GET /api/intelligence/projects/{id}/triage/suggestions
+# ═══════════════════════════════════════════════════════════════
+
+@router.get(
+    "/projects/{project_id}/triage/suggestions",
+    summary="Triage suggestion list",
+    description=(
+        "Returns a ranked list of bugs that need attention, scored by"
+        " deterministic signals: unassigned, stale, blocking, high-severity."
+    ),
+)
+async def triage_suggestions(
+    project_id: str,
+    auth=Depends(get_current_user_with_client),
+):
+    db, user = auth["db"], auth["user"]
+    require_project_role(db, project_id, user["id"])
+
+    now = datetime.now(timezone.utc)
+
+    # Fetch all open bugs in the project
+    bug_result = (
+        db.table("bugs")
+        .select("*")
+        .eq("project_id", project_id)
+        .in_("status", ["NEW", "CONFIRMED", "IN_PROGRESS", "REOPENED"])
+        .execute()
+    )
+    bugs = bug_result.data or []
+
+    # Fetch relationships to find blocking bugs
+    rel_result = (
+        db.table("relationships")
+        .select("source_bug_id, relationship_type")
+        .eq("relationship_type", "blocks")
+        .execute()
+    )
+    blocking_ids = {r["source_bug_id"] for r in (rel_result.data or [])}
+
+    suggestions = []
+    for bug in bugs:
+        score = 0
+        reasons = []
+
+        # Unassigned + high severity
+        if not bug.get("assignee_id") and bug.get("severity") in ("BLOCKER", "CRITICAL"):
+            score += 30
+            reasons.append(f"Unassigned {bug['severity']} bug")
+        elif not bug.get("assignee_id"):
+            score += 15
+            reasons.append("Unassigned")
+
+        # Age > 7 days
+        created_dt = _parse_ts(bug.get("created_at", ""))
+        if created_dt:
+            age_days = (now - created_dt).days
+            if age_days > 14:
+                score += 20
+                reasons.append(f"Open for {age_days} days")
+            elif age_days > 7:
+                score += 10
+                reasons.append(f"Open for {age_days} days")
+
+        # Blocking other bugs
+        if bug["id"] in blocking_ids:
+            score += 25
+            reasons.append("Blocking other issues")
+
+        # High severity
+        if bug.get("severity") in ("BLOCKER", "CRITICAL"):
+            score += 15
+            reasons.append(f"Severity {bug['severity']}")
+
+        # Reopened
+        if bug.get("status") == "REOPENED":
+            score += 10
+            reasons.append("Reopened — previously resolved")
+
+        # Stale (no update > 7 days)
+        updated_dt = _parse_ts(bug.get("updated_at", ""))
+        if updated_dt:
+            stale_days = (now - updated_dt).days
+            if stale_days > 7:
+                score += 10
+                reasons.append(f"No activity for {stale_days}d")
+
+        if score > 0:
+            suggestions.append({
+                "bug_id": bug["id"],
+                "title": bug["title"],
+                "status": bug["status"],
+                "severity": bug.get("severity", "NORMAL"),
+                "priority": bug.get("priority", "P3"),
+                "score": score,
+                "reasons": reasons,
+            })
+
+    # Sort by score descending
+    suggestions.sort(key=lambda s: s["score"], reverse=True)
+
+    # Summary stats
+    critical_unassigned = sum(
+        1 for s in suggestions
+        if s["severity"] in ("BLOCKER", "CRITICAL") and "Unassigned" in " ".join(s["reasons"])
+    )
+    blocking = sum(1 for s in suggestions if "Blocking" in " ".join(s["reasons"]))
+    stale = sum(1 for s in suggestions if "No activity" in " ".join(s["reasons"]))
+
+    return {
+        "suggestions": suggestions[:20],
+        "summary": {
+            "total_needing_attention": len(suggestions),
+            "critical_unassigned": critical_unassigned,
+            "blocking_other_issues": blocking,
+            "stale_bugs": stale,
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+#  § 7 — GET /api/intelligence/projects/{id}/risk-analysis
+# ═══════════════════════════════════════════════════════════════
+
+@router.get(
+    "/projects/{project_id}/risk-analysis",
+    summary="Project-level risk analysis",
+    description=(
+        "Computes a project-wide risk score based on open bugs,"
+        " blocking dependencies, stale issues, and severity distribution."
+    ),
+)
+async def project_risk_analysis(
+    project_id: str,
+    auth=Depends(get_current_user_with_client),
+):
+    db, user = auth["db"], auth["user"]
+    require_project_role(db, project_id, user["id"])
+
+    now = datetime.now(timezone.utc)
+
+    # Fetch all bugs
+    bug_result = (
+        db.table("bugs")
+        .select("*")
+        .eq("project_id", project_id)
+        .execute()
+    )
+    bugs = bug_result.data or []
+
+    open_bugs = [b for b in bugs if b.get("status") not in ("RESOLVED", "VERIFIED", "CLOSED")]
+
+    # Fetch blocking relationships (via bug IDs in this project)
+    bug_ids = [b["id"] for b in bugs]
+    blocking_count = 0
+    if bug_ids:
+        rel_result = (
+            db.table("relationships")
+            .select("source_bug_id, relationship_type")
+            .eq("relationship_type", "blocks")
+            .in_("source_bug_id", bug_ids)
+            .execute()
+        )
+        blocking_count = len(rel_result.data or [])
+
+    factors = []
+    total_score = 0.0
+
+    # F1: Open P1 bugs (weight: 10 each)
+    p1_count = sum(1 for b in open_bugs if b.get("priority") == "P1")
+    w = 10
+    contrib = min(float(w * 3), p1_count * w) if p1_count > 0 else 0.0
+    total_score += contrib
+    factors.append({"factor": "Open P1 issues", "count": p1_count, "weight": contrib,
+                    "description": f"{p1_count} P1 bugs still open"})
+
+    # F2: Critical/Blocker bugs (weight: 5 each)
+    crit_count = sum(1 for b in open_bugs if b.get("severity") in ("BLOCKER", "CRITICAL"))
+    w = 5
+    contrib = min(float(w * 4), crit_count * w) if crit_count > 0 else 0.0
+    total_score += contrib
+    factors.append({"factor": "Critical/Blocker bugs", "count": crit_count, "weight": contrib,
+                    "description": f"{crit_count} high-severity open bugs"})
+
+    # F3: Unassigned high-severity (weight: 8 each)
+    unassigned_crit = sum(
+        1 for b in open_bugs
+        if not b.get("assignee_id") and b.get("severity") in ("BLOCKER", "CRITICAL", "MAJOR")
+    )
+    w = 8
+    contrib = min(float(w * 3), unassigned_crit * w) if unassigned_crit > 0 else 0.0
+    total_score += contrib
+    factors.append({"factor": "Unassigned critical bugs", "count": unassigned_crit, "weight": contrib,
+                    "description": f"{unassigned_crit} high-severity bugs with no assignee"})
+
+    # F4: Blocking dependencies (weight: 7 each)
+    w = 7
+    contrib = min(float(w * 4), blocking_count * w) if blocking_count > 0 else 0.0
+    total_score += contrib
+    factors.append({"factor": "Blocking dependencies", "count": blocking_count, "weight": contrib,
+                    "description": f"{blocking_count} bugs are blocking other issues"})
+
+    # F5: Stale bugs >14 days (weight: 3 each)
+    stale_count = 0
+    for b in open_bugs:
+        created_dt = _parse_ts(b.get("created_at", ""))
+        if created_dt and (now - created_dt).days > 14:
+            stale_count += 1
+    w = 3
+    contrib = min(float(w * 5), stale_count * w) if stale_count > 0 else 0.0
+    total_score += contrib
+    factors.append({"factor": "Stale bugs (>14 days)", "count": stale_count, "weight": contrib,
+                    "description": f"{stale_count} bugs open for over 2 weeks"})
+
+    # F6: Total open bugs (weight: 1 each)
+    w = 1
+    contrib = min(float(w * 10), len(open_bugs) * w)
+    total_score += contrib
+    factors.append({"factor": "Total open bugs", "count": len(open_bugs), "weight": contrib,
+                    "description": f"{len(open_bugs)} total open bugs"})
+
+    # Risk level
+    if total_score >= 81:
+        level = "CRITICAL"
+    elif total_score >= 51:
+        level = "HIGH"
+    elif total_score >= 21:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    # Recommendations
+    recommendations = []
+    if unassigned_crit > 0:
+        recommendations.append(f"Assign the {unassigned_crit} unassigned critical bugs immediately")
+    if p1_count > 0:
+        recommendations.append(f"Review {p1_count} P1 issues for progress")
+    if blocking_count > 0:
+        recommendations.append(f"Resolve blocking dependencies to unblock {blocking_count} downstream bugs")
+    if stale_count > 0:
+        recommendations.append(f"Triage {stale_count} stale bugs that haven't been updated in 14+ days")
+
+    return {
+        "project_id": project_id,
+        "risk_score": round(total_score, 1),
+        "risk_level": level,
+        "factors": factors,
+        "recommendations": recommendations,
+        "total_bugs": len(bugs),
+        "open_bugs": len(open_bugs),
+    }

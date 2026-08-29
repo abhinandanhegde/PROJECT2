@@ -103,25 +103,36 @@ export const api = {
   },
 
   // ── Triage for multiple bugs (batch) ──
-  triageBatch: async (bugIds: string[]) => {
+  triageBatch: async (projectId: string, bugs: { id: string; title: string; description?: string; severity?: string; priority?: string }[]) => {
     const results = await Promise.allSettled(
-      bugIds.map((id) => authFetch(`/api/intelligence/triage/${id}`, { method: 'POST' }))
+      bugs.map((b) => authFetch(`/api/intelligence/projects/${projectId}/bugs/triage`, {
+        method: 'POST',
+        body: JSON.stringify({ title: b.title, description: b.description, severity: b.severity, priority: b.priority }),
+      }))
     )
     return results.map((r, i) => ({
-      bug_id: bugIds[i],
+      bug_id: bugs[i].id,
       ...(r.status === 'fulfilled' ? r.value : { error: true }),
     }))
   },
 
   // ── Intelligence ──
-  triage: (bugId: string) => authFetch(`/api/intelligence/triage/${bugId}`, { method: 'POST' }),
-  // Alias: frontend calls triageBug(projectId, body) — no backend endpoint for pre-creation triage,
-  // so this throws to trigger the client-side fallback heuristic.
-  triageBug: (_projectId: string, _data: Record<string, unknown>) => {
-    return Promise.reject(new Error('No pre-creation triage endpoint — using client fallback'))
-  },
-  findDuplicates: (bugId: string) => authFetch(`/api/intelligence/duplicates/${bugId}`, { method: 'POST' }),
-  riskAnalysis: (bugId: string) => authFetch(`/api/intelligence/risk/${bugId}`, { method: 'POST' }),
-  // Alias: frontend calls analyzeRisk(projectId, bugId)
-  analyzeRisk: (_projectId: string, bugId: string) => authFetch(`/api/intelligence/risk/${bugId}`, { method: 'POST' }),
+  // Triage: analyze a bug's title/description to suggest severity/priority
+  triage: (projectId: string, body: { title: string; description?: string; severity?: string; priority?: string; component?: string; status?: string }) =>
+    authFetch(`/api/intelligence/projects/${projectId}/bugs/triage`, { method: 'POST', body: JSON.stringify(body) }),
+  // Alias: frontend calls triageBug(projectId, body) — same as triage
+  triageBug: (projectId: string, body: Record<string, unknown>) =>
+    authFetch(`/api/intelligence/projects/${projectId}/bugs/triage`, { method: 'POST', body: JSON.stringify(body) }),
+  // Duplicate detection: find similar bugs using pg_trgm / Jaccard
+  findDuplicates: (projectId: string, body: { title: string; description?: string; threshold?: number; limit?: number }) =>
+    authFetch(`/api/intelligence/projects/${projectId}/bugs/duplicates`, { method: 'POST', body: JSON.stringify(body) }),
+  // Risk analysis: compute weighted risk score for a specific bug
+  riskAnalysis: (projectId: string, bugId: string) =>
+    authFetch(`/api/intelligence/projects/${projectId}/bugs/risk`, { method: 'POST', body: JSON.stringify({ bug_id: bugId }) }),
+  // Alias: frontend calls analyzeRisk(projectId, bugId) — same as riskAnalysis
+  analyzeRisk: (projectId: string, bugId: string) =>
+    authFetch(`/api/intelligence/projects/${projectId}/bugs/risk`, { method: 'POST', body: JSON.stringify({ bug_id: bugId }) }),
+
+  // ── Auth ──
+  getMe: () => authFetch('/api/auth/me'),
 }

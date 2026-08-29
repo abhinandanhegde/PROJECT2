@@ -80,17 +80,22 @@ export default function DashboardPage() {
   const [activityLoading, setActivityLoading] = useState(true)
   const [staleIssues, setStaleIssues] = useState<{ code: string; title: string; days: string }[]>([])
 
-  const loadTriageData = useCallback(async (bugs: Bug[]) => {
+  const loadTriageData = useCallback(async (projectId: string, bugs: Bug[]) => {
     setTriageLoading(true)
     // Pick the 5 most recent bugs for triage analysis
     const topBugs = bugs.slice(0, 5)
     const enriched: EnrichedTriageItem[] = topBugs.map((b) => ({ bug: b, loading: true }))
     setTriageItems(enriched)
 
-    // Fetch triage for each bug
+    // Fetch triage for each bug using correct backend route
     for (let i = 0; i < topBugs.length; i++) {
       try {
-        const triage = await api.triage(topBugs[i].id)
+        const triage = await api.triage(projectId, {
+          title: topBugs[i].title,
+          description: topBugs[i].description,
+          severity: topBugs[i].severity,
+          priority: topBugs[i].priority,
+        })
         setTriageItems((prev) =>
           prev.map((item, idx) =>
             idx === i ? { ...item, triage, loading: false } : item
@@ -174,7 +179,7 @@ export default function DashboardPage() {
         if (projects.length > 0) {
           const bugRes = await api.getBugs(projects[0].id, { status: 'NEW', per_page: '5' })
           const bugs = bugRes?.data || []
-          loadTriageData(bugs)
+          loadTriageData(projects[0].id, bugs)
         } else {
           setTriageLoading(false)
         }
