@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { signIn, signUp } from '@/lib/auth'
+import { signIn } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { BugIcon } from '@/components/ui/Icons'
 
@@ -40,27 +40,37 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    // Create a demo account on the fly, then sign in
-    const demoEmail = `demo-${Date.now()}@bugflow.demo`
-    const demoPassword = 'DemoPass123!'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const demoEmail = 'demo@bugflow.app'
+    const demoPassword = 'Demo1234!'
     const demoName = 'Demo User'
 
-    const { error: signUpError } = await signUp(demoEmail, demoPassword, demoName)
-    if (signUpError) {
-      // If signup fails, try signing in with existing demo
-      const { error: signInError } = await signIn(demoEmail, demoPassword)
-      setLoading(false)
-      if (signInError) {
-        setError('Demo account setup failed. Please sign up manually.')
-        return
+    // Step 1: Call backend to create user + seed data
+    try {
+      const res = await fetch(`${API_URL}/api/demo/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: demoEmail,
+          password: demoPassword,
+          display_name: demoName,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('Demo setup failed:', err)
       }
+    } catch (e) {
+      console.error('Demo setup network error:', e)
+      // Continue anyway — user might already exist
     }
 
-    // Sign in with the demo account
+    // Step 2: Sign in with the demo account
     const { error: signInError } = await signIn(demoEmail, demoPassword)
     setLoading(false)
     if (signInError) {
-      setError(signInError.message)
+      setError('Demo login failed. Make sure the backend is running on port 8000.')
       return
     }
     router.push('/')

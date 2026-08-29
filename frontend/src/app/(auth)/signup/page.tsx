@@ -41,21 +41,36 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
 
-    const demoEmail = `demo-${Date.now()}@bugflow.demo`
-    const demoPassword = 'DemoPass123!'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const demoEmail = 'demo@bugflow.app'
+    const demoPassword = 'Demo1234!'
     const demoName = 'Demo User'
 
-    const { error: signUpError } = await signUp(demoEmail, demoPassword, demoName)
-    if (signUpError) {
-      setLoading(false)
-      setError('Demo setup failed. Please sign up manually.')
-      return
+    // Step 1: Call backend to create user + seed data
+    try {
+      const res = await fetch(`${API_URL}/api/demo/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: demoEmail,
+          password: demoPassword,
+          display_name: demoName,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('Demo setup failed:', err)
+      }
+    } catch (e) {
+      console.error('Demo setup network error:', e)
     }
 
+    // Step 2: Sign in
     const { error: signInError } = await signIn(demoEmail, demoPassword)
     setLoading(false)
     if (signInError) {
-      setError(signInError.message)
+      setError('Demo login failed. Make sure the backend is running on port 8000.')
       return
     }
     router.push('/')

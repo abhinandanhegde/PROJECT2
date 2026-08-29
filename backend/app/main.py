@@ -62,6 +62,7 @@ from .routers.members import router as members_router
 from .routers.relationships import router as relationships_router
 from .routers.dashboard import router as dashboard_router
 from .routers.intelligence import router as intelligence_router
+from .routers.demo import router as demo_router
 
 app.include_router(projects_router)
 app.include_router(bugs_router)
@@ -71,3 +72,4 @@ app.include_router(members_router)
 app.include_router(relationships_router)
 app.include_router(dashboard_router)
 app.include_router(intelligence_router)
+app.include_router(demo_router)
