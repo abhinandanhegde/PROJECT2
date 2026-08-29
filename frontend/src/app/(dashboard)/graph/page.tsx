@@ -39,6 +39,15 @@ const EDGE_COLORS: Record<string, string> = {
   related_to: '#94a3b8',
 }
 
+const SEVERITY_COLORS: Record<string, string> = {
+  BLOCKER: '#dc2626',
+  CRITICAL: '#ef4444',
+  MAJOR: '#f97316',
+  NORMAL: '#3b82f6',
+  MINOR: '#6b7280',
+  TRIVIAL: '#a1a1aa',
+}
+
 export default function GraphPage() {
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [edges, setEdges] = useState<GraphEdge[]>([])
@@ -65,12 +74,12 @@ export default function GraphPage() {
         const allEdges: GraphEdge[] = []
         const nodeSet = new Set<string>()
 
+        const allBugIds: string[] = []
         for (const proj of projects) {
           try {
             const bugRes = await api.getBugs(proj.id, { per_page: '50' })
             const bugs: Bug[] = bugRes?.data || []
 
-            // Add nodes
             bugs.forEach((bug) => {
               if (!nodeSet.has(bug.id)) {
                 nodeSet.add(bug.id)
@@ -84,25 +93,8 @@ export default function GraphPage() {
                   vx: 0,
                   vy: 0,
                 })
+                allBugIds.push(bug.id)
               }
-
-              // Fetch relationships for each bug
-              api.getRelationships(bug.id).then((res) => {
-                const rels: Relationship[] = res?.data || []
-                rels.forEach((r) => {
-                  const edgeKey = `${r.source_bug_id}-${r.target_bug_id}-${r.relationship_type}`
-                  if (!allEdges.find((e) => `${e.source}-${e.target}-${e.type}` === edgeKey)) {
-                    setEdges((prev) => [
-                      ...prev,
-                      {
-                        source: r.source_bug_id,
-                        target: r.target_bug_id,
-                        type: r.relationship_type as GraphEdge['type'],
-                      },
-                    ])
-                  }
-                })
-              }).catch(() => {})
             })
           } catch {
             // Skip failed projects
@@ -110,6 +102,28 @@ export default function GraphPage() {
         }
 
         setNodes(allNodes)
+
+        // Batch-fetch ALL relationships in parallel — not N+1
+        const relResults = await Promise.allSettled(
+          allBugIds.map((bid) => api.getRelationships(bid))
+        )
+        const edgeSet = new Set<string>()
+        for (const r of relResults) {
+          if (r.status !== 'fulfilled') continue
+          const rels: Relationship[] = r.value?.data || []
+          for (const rel of rels) {
+            const key = `${rel.source_bug_id}-${rel.target_bug_id}-${rel.relationship_type}`
+            if (!edgeSet.has(key)) {
+              edgeSet.add(key)
+              allEdges.push({
+                source: rel.source_bug_id,
+                target: rel.target_bug_id,
+                type: rel.relationship_type as GraphEdge['type'],
+              })
+            }
+          }
+        }
+        setEdges(allEdges)
       } catch {
         // Silent fail
       } finally {
@@ -208,10 +222,16 @@ export default function GraphPage() {
               Interactive visualization of bug relationships — blocks, depends-on, and related issues.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">blocks</div>
-            <div className="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">depends_on</div>
-            <div className="px-3 py-1.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-700 border border-stone-200">related_to</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold text-stone-400 uppercase mr-1">Edges:</span>
+            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">blocks</div>
+            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">depends_on</div>
+            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">related_to</div>
+            <span className="text-stone-300 mx-1">|</span>
+            <span className="text-[10px] font-semibold text-stone-400 uppercase mr-1">Rings:</span>
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-red-500" /><span className="text-[10px] text-stone-500">Critical</span></div>
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-orange-500" /><span className="text-[10px] text-stone-500">Major</span></div>
+            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-blue-500" /><span className="text-[10px] text-stone-500">Normal</span></div>
           </div>
         </div>
       </div>
@@ -328,7 +348,17 @@ export default function GraphPage() {
                   {isSelected && (
                     <circle cx={node.x} cy={node.y} r={24} fill={color} opacity={0.15} />
                   )}
-                  {/* Node circle */}
+                  {/* Severity ring */}
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={isSelected ? 22 : 18}
+                    fill="none"
+                    stroke={SEVERITY_COLORS[node.severity] || '#6b7280'}
+                    strokeWidth={isSelected ? 2.5 : 2}
+                    strokeOpacity={isDimmed ? 0.15 : 0.7}
+                  />
+                  {/* Status circle */}
                   <circle
                     cx={node.x}
                     cy={node.y}

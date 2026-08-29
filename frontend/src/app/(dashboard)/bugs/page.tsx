@@ -346,7 +346,18 @@ function BugsContent() {
                       <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.title}</Link>
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                          bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
+                            ? 'bg-red-500'
+                            : bug.severity === 'MAJOR'
+                            ? 'bg-orange-500'
+                            : bug.severity === 'NORMAL'
+                            ? 'bg-blue-500'
+                            : 'bg-stone-400'
+                        }`} />
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
@@ -385,7 +396,18 @@ function BugsContent() {
                   <Link href={`/bugs/${bug.id}`}>{bug.title}</Link>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${
+                      bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
+                        ? 'bg-red-500'
+                        : bug.severity === 'MAJOR'
+                        ? 'bg-orange-500'
+                        : bug.severity === 'NORMAL'
+                        ? 'bg-blue-500'
+                        : 'bg-stone-400'
+                    }`} />
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+                  </div>
                   <span className={`px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
                   <span className="text-xs text-stone-500 dark:text-stone-400 ml-auto">{bug.assignee_name || 'Unassigned'}</span>
                 </div>

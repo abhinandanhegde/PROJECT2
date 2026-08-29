@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 export default function SettingsPage() {
   const [userName, setUserName] = useState('')
   const [userEmail, setUserEmail] = useState('')
+  const [emailNotifs, setEmailNotifs] = useState(true)
+  const [autoAssign, setAutoAssign] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -57,18 +59,18 @@ export default function SettingsPage() {
               <div className="text-sm font-medium text-stone-900 dark:text-white">Email Notifications</div>
               <div className="text-xs text-stone-500 dark:text-stone-400">Receive email alerts for assigned bugs</div>
             </div>
-            <div className="w-10 h-6 rounded-full bg-orange-500 relative cursor-pointer">
-              <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 right-0.5 shadow-sm" />
-            </div>
+            <button type="button" onClick={() => setEmailNotifs(!emailNotifs)} className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${emailNotifs ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-600'}`}>
+              <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 shadow-sm transition-transform ${emailNotifs ? 'right-0.5' : 'left-0.5'}`} />
+            </button>
           </div>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-medium text-stone-900 dark:text-white">Auto-assign on Status Change</div>
               <div className="text-xs text-stone-500 dark:text-stone-400">Automatically assign bug to last commenter</div>
             </div>
-            <div className="w-10 h-6 rounded-full bg-stone-300 dark:bg-stone-600 relative cursor-pointer">
-              <div className="w-5 h-5 rounded-full bg-white absolute top-0.5 left-0.5 shadow-sm" />
-            </div>
+            <button type="button" onClick={() => setAutoAssign(!autoAssign)} className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${autoAssign ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-600'}`}>
+              <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 shadow-sm transition-transform ${autoAssign ? 'right-0.5' : 'left-0.5'}`} />
+            </button>
           </div>
         </div>
       </div>

@@ -306,7 +306,15 @@ export default function BugDetailPage({
           >
             {bug.status}
           </span>
-          <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-900">
+          <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
+            bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
+              ? 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-900'
+              : bug.severity === 'MAJOR'
+              ? 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-900'
+              : bug.severity === 'NORMAL'
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-900'
+              : 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 border border-stone-200 dark:border-stone-700'
+          }`}>
             {bug.severity}
           </span>
           <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
