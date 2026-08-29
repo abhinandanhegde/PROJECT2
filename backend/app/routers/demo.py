@@ -99,7 +99,28 @@ async def setup_demo_account(body: DemoSetupRequest):
             })
             user_id = result.user.id
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"create_user failed: {e}")
+            logger.warning(f"create_user failed (user may exist): {e}")
+            # Delete the existing user and recreate cleanly
+            try:
+                users2 = db.auth.admin.list_users()
+                for u in (users2.users or []):
+                    if u.email == body.email:
+                        # Delete old user + all their data
+                        old_uid = u.id
+                        db.auth.admin.delete_user(old_uid)
+                        # Recreate
+                        result2 = db.auth.admin.create_user({
+                            "email": body.email,
+                            "password": body.password,
+                            "email_confirm": True,
+                            "user_metadata": {"display_name": body.display_name},
+                        })
+                        user_id = result2.user.id
+                        logger.info(f"Recreated demo user: {user_id}")
+                        break
+            except Exception as e2:
+                logger.error(f"Could not recreate demo user: {e2}")
+                raise HTTPException(status_code=500, detail=f"Cannot create demo user: {e2}")
 
     if not user_id:
         raise HTTPException(status_code=500, detail="No user_id")
