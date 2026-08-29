@@ -122,13 +122,11 @@ export default function DashboardPage() {
       }
     })
 
-    // Fire ALL 3 dashboard API calls in PARALLEL — 3x faster
+    // PHASE 1: Stats + Activity in parallel (fastest — just 2 calls)
     Promise.allSettled([
       api.getDashboardStats(),
       api.getDashboardRecent(20),
-      api.getProjects(),
-    ]).then(([statsRes, recentRes, projRes]) => {
-      // Stats
+    ]).then(([statsRes, recentRes]) => {
       if (statsRes.status === 'fulfilled' && statsRes.value?.total_bugs_reported !== undefined) {
         const r = statsRes.value
         const sev = r.bugs_by_severity || {}
@@ -141,7 +139,6 @@ export default function DashboardPage() {
       }
       setStatsLoading(false)
 
-      // Recent activity
       if (recentRes.status === 'fulfilled') {
         const entries = recentRes.value?.data || []
         setRecentActivities(entries)
@@ -157,21 +154,22 @@ export default function DashboardPage() {
         setStaleIssues(Array.from(staleMap.values()).slice(0, 3))
       }
       setActivityLoading(false)
-
-      // Triage — fetch bugs then triage in parallel
-      if (projRes.status === 'fulfilled') {
-        const projects = projRes.value?.data || []
-        if (projects.length > 0) {
-          api.getBugs(projects[0].id, { status: 'NEW', per_page: '5' })
-            .then((bugRes) => loadTriageData(projects[0].id, bugRes?.data || []))
-            .catch(() => setTriageLoading(false))
-        } else {
-          setTriageLoading(false)
-        }
-      } else {
-        setTriageLoading(false)
-      }
     })
+
+    // PHASE 2: Triage queue — lazy-load after 300ms so stats render first
+    setTimeout(() => {
+      api.getProjects()
+        .then(async (projRes) => {
+          const projects = projRes?.data || []
+          if (projects.length > 0) {
+            const bugRes = await api.getBugs(projects[0].id, { status: 'NEW', per_page: '5' })
+            loadTriageData(projects[0].id, bugRes?.data || [])
+          } else {
+            setTriageLoading(false)
+          }
+        })
+        .catch(() => setTriageLoading(false))
+    }, 300)
   }, [loadTriageData])
 
   const currentDate = new Date().toLocaleDateString('en-US', {
