@@ -71,13 +71,19 @@ async def dashboard_assigned(
     user = auth["user"]
     db = auth["db"]
     offset = (page - 1) * per_page
-    query = db.table("bugs").select("*", count="exact").eq("assignee_id", user["id"])
+    count_query = db.table("bugs").select("id", count="exact").eq("assignee_id", user["id"])
+    if status:
+        count_query = count_query.eq("status", status)
+    count_result = count_query.execute()
+    total = count_result.count or 0
+
+    query = db.table("bugs").select("*").eq("assignee_id", user["id"])
     if status:
         query = query.eq("status", status)
     result = query.order("updated_at", desc=True).range(offset, offset + per_page - 1).execute()
     return {
         "data": result.data or [],
-        "total": result.count or 0,
+        "total": total,
         "page": page,
         "per_page": per_page,
     }
