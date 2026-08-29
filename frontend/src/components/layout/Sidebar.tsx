@@ -2,12 +2,11 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   BugIcon,
   DashboardIcon,
   IssuesIcon,
-  TriageIcon,
   GraphIcon,
   AnalyticsIcon,
   ReportsIcon,
@@ -26,7 +25,6 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [userName, setUserName] = useState('Alex Johnson')
   const [userRole, setUserRole] = useState('Administrator')
   const [userAvatar, setUserAvatar] = useState('')
@@ -49,7 +47,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const navItems = [
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
-    { label: 'Triage', href: '/bugs?tab=triage', icon: TriageIcon },
     { label: 'Graph', href: '/graph', icon: GraphIcon },
     { label: 'Analytics', href: '/analytics', icon: AnalyticsIcon },
     { label: 'Reports', href: '/reports', icon: ReportsIcon },
@@ -90,15 +87,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         <nav className="px-3 mt-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
-            // Handle items that carry a query string (e.g. Triage -> /bugs?tab=triage)
-            // so they don't both match the plain "/bugs" Issues item.
-            const [itemPath, itemQuery] = item.href.split('?')
             const isActive =
               item.href === '/'
                 ? pathname === '/'
-                : itemQuery
-                ? pathname === itemPath &&
-                  new URLSearchParams(itemQuery).get('tab') === searchParams.get('tab')
                 : pathname.startsWith(item.href)
 
             return (

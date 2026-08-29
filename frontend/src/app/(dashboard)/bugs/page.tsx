@@ -8,13 +8,56 @@ import type { Bug, TriageResult } from '@/lib/types'
 import { shortBugId } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
-type Tab = 'all' | 'assigned' | 'reported' | 'triage'
+type Tab = 'all' | 'assigned' | 'reported'
 
 interface EnrichedTriageItem {
   bug: Bug
   triage?: TriageResult
   loading: boolean
 }
+
+const fallbackBugs: Bug[] = [
+  {
+    id: 'BUG-184', project_id: 'default', title: 'Login crashes after session expires',
+    description: 'Users experience an unhandled exception on token expiry.',
+    status: 'NEW', severity: 'BLOCKER', priority: 'P1', reporter_id: 'u1',
+    reporter_name: 'Alex Johnson', assignee_id: null, assignee_name: 'Unassigned',
+    created_at: new Date(Date.now() - 7200000).toISOString(),
+    updated_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'BUG-181', project_id: 'default', title: 'API returns 500 on payment process',
+    description: 'Stripe webhook verification fails intermittently.',
+    status: 'CONFIRMED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u2',
+    reporter_name: 'Mike Ross', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
+    created_at: new Date(Date.now() - 18000000).toISOString(),
+    updated_at: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: 'BUG-178', project_id: 'default', title: 'UI freezes on dashboard refresh',
+    description: 'Heavy SVG render blocking main thread.',
+    status: 'IN_PROGRESS', severity: 'MAJOR', priority: 'P2', reporter_id: 'u1',
+    reporter_name: 'Alex Johnson', assignee_id: 'u4', assignee_name: 'Priya Singh',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 43200000).toISOString(),
+  },
+  {
+    id: 'BUG-175', project_id: 'default', title: 'Email notifications not sent',
+    description: 'SMTP connection timeout on worker nodes.',
+    status: 'NEW', severity: 'NORMAL', priority: 'P2', reporter_id: 'u2',
+    reporter_name: 'Mike Ross', assignee_id: null, assignee_name: 'Unassigned',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'BUG-143', project_id: 'default', title: 'Database connection pool exhaustion under load',
+    description: 'Max connections reached during peak hour benchmarks.',
+    status: 'RESOLVED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u3',
+    reporter_name: 'Rahul Sharma', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
+    resolution: 'FIXED', created_at: new Date(Date.now() - 172800000).toISOString(),
+    updated_at: new Date(Date.now() - 120000).toISOString(),
+  },
+]
 
 function BugsContent() {
   const searchParams = useSearchParams()
@@ -41,30 +84,52 @@ function BugsContent() {
     })
   }, [])
 
-  const loadTriage = useCallback(async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true)
     setTriageLoading(true)
-    setTriageItems([])
     try {
-      const projRes = await api.getProjects()
+      const projRes = await api.getProjects().catch(() => null)
       const projs = projRes?.data || []
+
       if (projs.length === 0) {
+        setBugs([])
+        setTriageItems([])
+        setLoading(false)
         setTriageLoading(false)
         return
       }
+
       const projectId = projs[0].id
-      const bugRes = await api.getBugs(projectId, { per_page: '10' })
-      const list: Bug[] = (bugRes?.data as Bug[]) || []
-      const topBugs = list.slice(0, 5)
+
+      // Fetch the bug LIST and TRIAGE SOURCE list in PARALLEL (single project fetch above)
+      const [listRes, triageSrcRes] = await Promise.all([
+        api
+          .getBugs(projectId, {
+            status: statusFilter || undefined,
+            severity: severityFilter || undefined,
+            priority: priorityFilter || undefined,
+            search: searchQuery || undefined,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+          })
+          .catch(() => null),
+        api.getBugs(projectId, { per_page: '10' }).catch(() => null),
+      ])
+
+      const list = listRes?.data as Bug[] | undefined
+      setBugs(list && list.length > 0 ? list : fallbackBugs)
+
+      const triageSrc = (triageSrcRes?.data as Bug[] | undefined) || []
+      const topBugs = triageSrc.slice(0, 5)
       if (topBugs.length === 0) {
         setTriageItems([])
+        setLoading(false)
         setTriageLoading(false)
         return
       }
 
-      const enriched: EnrichedTriageItem[] = topBugs.map((b) => ({ bug: b, loading: true }))
-      setTriageItems(enriched)
-
-      // Fetch ALL triage in PARALLEL for speed
+      // Show skeleton rows immediately, run ALL triage calls in PARALLEL
+      setTriageItems(topBugs.map((b) => ({ bug: b, loading: true })))
       const results = await Promise.allSettled(
         topBugs.map((b) =>
           api.triage(projectId, {
@@ -83,119 +148,29 @@ function BugsContent() {
         }))
       )
     } catch {
+      setBugs(fallbackBugs)
       setTriageItems([])
     } finally {
+      setLoading(false)
       setTriageLoading(false)
     }
-  }, [])
+  }, [statusFilter, severityFilter, priorityFilter, searchQuery, sortBy, sortOrder])
 
+  // Load bugs list + triage queue together. The triage view is now part of the
+  // issues page — one effect, parallel fetches, no separate triage tab.
   useEffect(() => {
-    if (tabParam === 'triage') {
-      loadTriage()
+    loadData()
+  }, [loadData])
+
+const visibleBugs = useMemo(() => {
+    if (tabParam === 'assigned' && currentUserId) {
+      return bugs.filter((b) => b.assignee_id === currentUserId)
     }
-  }, [tabParam, loadTriage])
-
-  const fallbackBugs: Bug[] = useMemo(
-    () => [
-      {
-        id: 'BUG-184', project_id: 'default', title: 'Login crashes after session expires',
-        description: 'Users experience an unhandled exception on token expiry.',
-        status: 'NEW', severity: 'BLOCKER', priority: 'P1', reporter_id: 'u1',
-        reporter_name: 'Alex Johnson', assignee_id: null, assignee_name: 'Unassigned',
-        created_at: new Date(Date.now() - 7200000).toISOString(),
-        updated_at: new Date(Date.now() - 3600000).toISOString(),
-      },
-      {
-        id: 'BUG-181', project_id: 'default', title: 'API returns 500 on payment process',
-        description: 'Stripe webhook verification fails intermittently.',
-        status: 'CONFIRMED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u2',
-        reporter_name: 'Mike Ross', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
-        created_at: new Date(Date.now() - 18000000).toISOString(),
-        updated_at: new Date(Date.now() - 7200000).toISOString(),
-      },
-      {
-        id: 'BUG-178', project_id: 'default', title: 'UI freezes on dashboard refresh',
-        description: 'Heavy SVG render blocking main thread.',
-        status: 'IN_PROGRESS', severity: 'MAJOR', priority: 'P2', reporter_id: 'u1',
-        reporter_name: 'Alex Johnson', assignee_id: 'u4', assignee_name: 'Priya Singh',
-        created_at: new Date(Date.now() - 86400000).toISOString(),
-        updated_at: new Date(Date.now() - 43200000).toISOString(),
-      },
-      {
-        id: 'BUG-175', project_id: 'default', title: 'Email notifications not sent',
-        description: 'SMTP connection timeout on worker nodes.',
-        status: 'NEW', severity: 'NORMAL', priority: 'P2', reporter_id: 'u2',
-        reporter_name: 'Mike Ross', assignee_id: null, assignee_name: 'Unassigned',
-        created_at: new Date(Date.now() - 86400000).toISOString(),
-        updated_at: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        id: 'BUG-143', project_id: 'default', title: 'Database connection pool exhaustion under load',
-        description: 'Max connections reached during peak hour benchmarks.',
-        status: 'RESOLVED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u3',
-        reporter_name: 'Rahul Sharma', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
-        resolution: 'FIXED', created_at: new Date(Date.now() - 172800000).toISOString(),
-        updated_at: new Date(Date.now() - 120000).toISOString(),
-      },
-    ],
-    []
-  )
-
-  useEffect(() => {
-    function filterBugs(list: Bug[]) {
-      let filtered = [...list]
-      if (tabParam === 'assigned' && currentUserId) {
-        filtered = filtered.filter((b) => b.assignee_id === currentUserId)
-      } else if (tabParam === 'reported' && currentUserId) {
-        filtered = filtered.filter((b) => b.reporter_id === currentUserId)
-      }
-      if (statusFilter) filtered = filtered.filter((b) => b.status === statusFilter)
-      if (severityFilter) filtered = filtered.filter((b) => b.severity === severityFilter)
-      if (priorityFilter) filtered = filtered.filter((b) => b.priority === priorityFilter)
-      if (searchQuery) {
-        filtered = filtered.filter(
-          (b) => b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            b.id.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      }
-      return filtered
+    if (tabParam === 'reported' && currentUserId) {
+      return bugs.filter((b) => b.reporter_id === currentUserId)
     }
-
-    async function loadData() {
-      setLoading(true)
-      try {
-        const projRes = await api.getProjects().catch(() => null)
-        const projs = projRes?.data || []
-
-        if (projs.length > 0) {
-          const bugRes = await api.getBugs(projs[0].id, {
-            status: statusFilter || undefined,
-            severity: severityFilter || undefined,
-            priority: priorityFilter || undefined,
-            search: searchQuery || undefined,
-            sort_by: sortBy,
-            sort_order: sortOrder,
-          })
-          if (bugRes?.data && bugRes.data.length > 0) {
-            setBugs(filterBugs(bugRes.data))
-          } else {
-            setBugs(filterBugs(fallbackBugs))
-          }
-        } else {
-          setBugs(filterBugs(fallbackBugs))
-        }
-      } catch {
-        setBugs(filterBugs(fallbackBugs))
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    // Don't fetch the plain list when the triage view is active (separate effect loads it)
-    if (tabParam !== 'triage') {
-      loadData()
-    }
-  }, [statusFilter, severityFilter, priorityFilter, sortBy, sortOrder, searchQuery, tabParam, currentUserId, fallbackBugs])
+    return bugs
+  }, [bugs, tabParam, currentUserId])
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -271,7 +246,6 @@ function BugsContent() {
           { key: 'all' as Tab, label: 'All Issues' },
           { key: 'assigned' as Tab, label: 'Assigned to Me' },
           { key: 'reported' as Tab, label: 'Reported by Me' },
-          { key: 'triage' as Tab, label: 'Triage' },
         ]).map((t) => (
           <button
             key={t.key}
@@ -352,9 +326,8 @@ function BugsContent() {
         </div>
       </div>
 
-      {/* Triage Queue View */}
-      {tabParam === 'triage' ? (
-        <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
+      {/* Triage Queue View (always part of the Issues page) */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="p-6 pb-2">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
@@ -469,8 +442,8 @@ function BugsContent() {
             </div>
           </div>
         </div>
-      ) : (
-        <>
+
+      {/* Issues List */}
       {/* Loading */}
       {loading ? (
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 space-y-4">
@@ -486,7 +459,7 @@ function BugsContent() {
             </div>
           ))}
         </div>
-      ) : bugs.length === 0 ? (
+      ) : visibleBugs.length === 0 ? (
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-12 text-center border border-[#eee9e2] dark:border-stone-800">
           <div className="w-12 h-12 rounded-2xl bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400 flex items-center justify-center mx-auto mb-3">
             <span className="text-xl">🔍</span>
@@ -522,7 +495,7 @@ function BugsContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eee9e2] dark:divide-stone-800">
-                {bugs.map((bug) => (
+                {visibleBugs.map((bug) => (
                   <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
                     <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
                       <Link href={`/bugs/${bug.id}`} className="hover:underline">{shortBugId(bug.id)}</Link>
@@ -569,7 +542,7 @@ function BugsContent() {
 
           {/* Mobile Cards */}
           <div className="md:hidden space-y-3">
-            {bugs.map((bug) => (
+            {visibleBugs.map((bug) => (
               <div key={bug.id} className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
@@ -599,8 +572,6 @@ function BugsContent() {
               </div>
             ))}
           </div>
-        </>
-      )}
         </>
       )}
     </div>
