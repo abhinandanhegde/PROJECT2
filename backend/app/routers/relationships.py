@@ -70,7 +70,16 @@ async def list_relationships(
     db = auth["db"]
     outgoing = db.table("relationships").select("*").eq("source_bug_id", bug_id).execute()
     incoming = db.table("relationships").select("*").eq("target_bug_id", bug_id).execute()
-    return {"outgoing": outgoing.data or [], "incoming": incoming.data or []}
+    # Merge into a flat list for the frontend (graph page expects res.data)
+    all_rels = (outgoing.data or []) + (incoming.data or [])
+    seen = set()
+    unique = []
+    for r in all_rels:
+        key = (r["source_bug_id"], r["target_bug_id"], r["relationship_type"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    return {"data": unique, "outgoing": outgoing.data or [], "incoming": incoming.data or []}
 
 
 @router.delete("/bugs/{bug_id}/relationships/{relationship_id}", status_code=200)

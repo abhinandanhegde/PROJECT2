@@ -82,11 +82,11 @@ async def list_projects(
         .range(offset, offset + per_page - 1)
         .execute()
     )
-    count_result = db.table("projects").select("id", count="exact").in_("id", project_ids).execute()
+    count_resp = db.table("projects").select("id").in_("id", project_ids).execute()
 
     return {
         "data": result.data,
-        "total": count_result.count or len(result.data or []),
+        "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
     }

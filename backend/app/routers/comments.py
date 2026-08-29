@@ -59,10 +59,10 @@ async def list_comments(
         .execute()
     )
     # Get total count without join
-    count_result = db.table("comments").select("id", count="exact").eq("bug_id", bug_id).execute()
+    count_resp = db.table("comments").select("id").eq("bug_id", bug_id).execute()
     return {
         "data": result.data,
-        "total": count_result.count or len(result.data or []),
+        "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
     }

@@ -63,7 +63,7 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-    } catch (e) {
+    } catch {
       setError('Cannot reach backend. Make sure uvicorn is running on port 8000.')
       setLoading(false)
       return

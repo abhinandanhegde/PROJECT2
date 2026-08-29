@@ -71,11 +71,11 @@ async def dashboard_assigned(
     user = auth["user"]
     db = auth["db"]
     offset = (page - 1) * per_page
-    count_query = db.table("bugs").select("id", count="exact").eq("assignee_id", user["id"])
+    count_query = db.table("bugs").select("id").eq("assignee_id", user["id"])
     if status:
         count_query = count_query.eq("status", status)
-    count_result = count_query.execute()
-    total = count_result.count or 0
+    count_resp = count_query.execute()
+    total = len(count_resp.data or [])
 
     query = db.table("bugs").select("*").eq("assignee_id", user["id"])
     if status:

@@ -190,6 +190,7 @@ export default function GraphPage() {
 
     frameId = requestAnimationFrame(runFrames)
     return () => cancelAnimationFrame(frameId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes.length, edges.length, dimensions])
 
   const handleNodeClick = useCallback((id: string) => {
