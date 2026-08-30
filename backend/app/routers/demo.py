@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/demo", tags=["demo"])
 logger = logging.getLogger(__name__)
 
 # Overridable in backend/.env (DEMO_EMAIL, DEMO_PASSWORD, DEMO_NAME)
-DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@bugflow.app")
+DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@bugnexus.app")
 DEMO_PASS = os.getenv("DEMO_PASSWORD", "Demo1234!")
 DEMO_NAME = os.getenv("DEMO_NAME", "Demo User")
 

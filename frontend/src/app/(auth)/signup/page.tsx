@@ -42,7 +42,7 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
 
-    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugflow.app'
+    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugnexus.app'
     const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo1234!'
     const demoName = process.env.NEXT_PUBLIC_DEMO_NAME || 'Demo User'
 
@@ -95,7 +95,7 @@ export default function SignupPage() {
           <BugIcon className="w-7 h-7 text-orange-600" />
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
-          Create BugFlow account
+          Create BugNexus account
         </h2>
         <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
           Get started with modern bug tracking and intelligent triage

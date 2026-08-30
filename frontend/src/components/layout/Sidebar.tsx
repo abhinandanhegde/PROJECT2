@@ -66,7 +66,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
             </div>
             <div>
               <div className="font-bold text-lg text-stone-900 dark:text-white tracking-tight leading-none">
-                BugFlow
+                BugNexus
               </div>
               <div className="text-xs text-stone-400 dark:text-stone-500 font-medium tracking-wide mt-1">
                 Track • Triage • Resolve

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BugFlow — Deterministic Bug Tracking",
+  title: "BugNexus — Deterministic Bug Tracking",
   description:
-    "BugFlow: a production-grade bug tracker with lifecycle state control, per-project access, and deterministic, instant intelligence",
+    "BugNexus: a production-grade bug tracker with lifecycle state control, per-project access, and deterministic, instant intelligence",
 };
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark';document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;

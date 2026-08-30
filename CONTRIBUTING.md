@@ -1,4 +1,4 @@
-# Contributing to BugFlow
+# Contributing to BugNexus
 
 ## Team Roles
 

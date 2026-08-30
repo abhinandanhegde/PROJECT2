@@ -1,4 +1,4 @@
-# BugFlow — Test Documentation & Proof
+# BugNexus — Test Documentation & Proof
 
 > Every test run with timestamp, environment, and full output.
 

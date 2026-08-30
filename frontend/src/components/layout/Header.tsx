@@ -128,7 +128,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
         {/* Help Icon */}
         <button
           onClick={() =>
-            success('BugFlow Help', 'Press ⌘K to search or click any bug to view triage details.')
+            success('BugNexus Help', 'Press ⌘K to search or click any bug to view triage details.')
           }
           className="p-2 rounded-xl text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
         >

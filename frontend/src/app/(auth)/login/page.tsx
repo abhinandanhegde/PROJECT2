@@ -41,7 +41,7 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugflow.app'
+    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugnexus.app'
     const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo1234!'
     const demoName = process.env.NEXT_PUBLIC_DEMO_NAME || 'Demo User'
 
@@ -99,7 +99,7 @@ export default function LoginPage() {
           <BugIcon className="w-7 h-7 text-orange-600" />
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
-          Sign in to BugFlow
+          Sign in to BugNexus
         </h2>
         <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
           Track • Triage • Resolve software bugs in real-time

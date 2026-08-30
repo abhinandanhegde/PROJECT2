@@ -1,8 +1,8 @@
-# BugFlow
+# BugNexus
 
-> A modern developer bug-tracking platform with intelligent triage, deterministic duplicate detection, and role-based security — built in 3 days for CloneFest hackathon.
+> A deterministic bug-tracking platform with intelligent triage, dependency graph impact analysis, and role-based security — built in 3 days for CloneFest hackathon.
 
-**Live Demo:** [bugflow.vercel.app](https://bugflow.vercel.app) · **API Docs:** [bugflow-api.up.railway.app/docs](https://bugflow-api.up.railway.app/docs)
+**Live Demo:** [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) · **API Docs:** [/docs](https://project-2-sigma-seven.vercel.app/docs)
 
 ---
 
@@ -41,7 +41,7 @@ Every mark maps to a specific, verifiable implementation. Click any link to see 
 | ✅ Auth via JWKS | ES256 + RS256, Supabase Auth handles signup/login, no custom JWT | `backend/app/auth.py` — `verify_supabase_token()` with key rotation retry |
 | ✅ Testing | 100 backend tests (auth, lifecycle, triage, risk, models, endpoints, search security, graph impact, RLS enforcement, rate limiting) | `backend/tests/` — 100 passed, 0 failed |
 | ✅ CI/CD | GitHub Actions: lint → typecheck → build → backend tests (`set -euo pipefail`) | `.github/workflows/ci.yml` — no `|| true`, real test execution |
-| ✅ Deployed | Vercel (frontend) + Railway (backend) — live and accessible | [bugflow.vercel.app](https://bugflow.vercel.app) · [API docs](https://bugflow-api.up.railway.app/docs) |
+| ✅ Deployed | Vercel (frontend) — live and accessible | [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) |
 
 ### 4. User Experience & Accessibility (15/15)
 
@@ -82,7 +82,7 @@ Every mark maps to a specific, verifiable implementation. Click any link to see 
 
 ## What It Does
 
-BugFlow tracks software bugs from report to resolution with a full lifecycle state machine, project-level access control, and AI-free intelligence features.
+BugNexus tracks software bugs from report to resolution with a full lifecycle state machine, project-level access control, deterministic intelligence, and dependency graph impact analysis.
 
 | Feature | How It Works |
 |---------|-------------|
