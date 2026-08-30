@@ -107,6 +107,15 @@ export default function ReportsPage() {
     { label: 'Components', value: componentHealth.length, accent: 'text-stone-900 dark:text-white', hint: 'Tracked areas' },
   ]
 
+  // Health score breakdown — explainable, not arbitrary
+  const resolutionRate = totalBugs > 0 ? Math.round((resolvedBugs / totalBugs) * 100) : 0
+  const healthFactors = [
+    { label: 'Resolution Rate', value: resolutionRate, max: 100, contribution: Math.round(resolutionRate * 0.5), positive: true },
+    { label: 'Critical Issues', value: componentHealth.filter((c) => c.risk === 'High').length, max: Math.max(componentHealth.length, 1), contribution: -Math.min(25, componentHealth.filter((c) => c.risk === 'High').length * 8), positive: false },
+    { label: 'Components Healthy', value: componentHealth.filter((c) => c.pct >= 70).length, max: Math.max(componentHealth.length, 1), contribution: Math.round((componentHealth.filter((c) => c.pct >= 70).length / Math.max(componentHealth.length, 1)) * 25), positive: true },
+  ]
+  const healthScore = Math.max(0, Math.min(100, 50 + healthFactors.reduce((sum, f) => sum + f.contribution, 0)))
+
   return (
     <div className="space-y-6">
       <div>
@@ -139,6 +148,47 @@ export default function ReportsPage() {
           </div>
         ))}
       </div>
+
+      {/* Health Score Breakdown — Explainable */}
+      {!loading && totalBugs > 0 && (
+        <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-base text-stone-900 dark:text-white">Project Health Score</h2>
+            <div className="text-3xl font-bold">
+              <span className={healthScore >= 70 ? 'text-emerald-600 dark:text-emerald-400' : healthScore >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}>
+                {healthScore}
+              </span>
+              <span className="text-sm text-stone-400 dark:text-stone-500 font-normal">/100</span>
+            </div>
+          </div>
+
+          <div className="text-xs text-stone-500 dark:text-stone-400 mb-3">How this score is computed:</div>
+
+          <div className="space-y-2">
+            {healthFactors.map((f) => (
+              <div key={f.label} className="flex items-center gap-3">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400 w-36 shrink-0">{f.label}</span>
+                <div className="flex-1 h-2 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${f.positive ? 'bg-emerald-500' : 'bg-red-500'}`}
+                    style={{ width: `${Math.min(100, Math.abs(f.contribution) * 2)}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-bold w-12 text-right ${f.contribution >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {f.contribution >= 0 ? '+' : ''}{f.contribution}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+            <span className="text-xs text-stone-400">50 (base) + factors</span>
+            <span className={`text-sm font-bold ${healthScore >= 70 ? 'text-emerald-600 dark:text-emerald-400' : healthScore >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+              HEALTH: {healthScore}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Component Health Table */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-sm overflow-hidden">

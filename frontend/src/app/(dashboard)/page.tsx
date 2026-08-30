@@ -87,7 +87,6 @@ export default function DashboardPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [triageLoading, setTriageLoading] = useState(true)
   const [activityLoading, setActivityLoading] = useState(true)
-  const [staleIssues, setStaleIssues] = useState<{ code: string; title: string; days: string }[]>([])
   const [intel, setIntel] = useState({ triaged: 0, total: 0, avgRisk: 0, blocking: 0, critical: 0 })
 
   const loadTriageData = useCallback(async (projectId: string, bugs: Bug[]) => {
@@ -191,27 +190,7 @@ export default function DashboardPage() {
             setTriageLoading(false)
           }
 
-          // Load stale issues
-          const allBugsResult = await Promise.allSettled([
-            api.getBugs(projs[0].id, { per_page: '100', status: undefined }),
-          ])
-          if (allBugsResult[0].status === 'fulfilled') {
-            const allBugs = (allBugsResult[0].value as { data?: Bug[] })?.data || []
-            const now = Date.now()
-            const stale = allBugs
-              .filter((b) => {
-                const age = now - new Date(b.created_at).getTime()
-                return age > 7 * 86400000 && !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(b.status)
-              })
-              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-              .slice(0, 3)
-              .map((b) => ({
-                code: bugRef(b),
-                title: b.title.length > 40 ? b.title.slice(0, 40) + '…' : b.title,
-                days: `${Math.floor((now - new Date(b.created_at).getTime()) / 86400000)}d`,
-              }))
-            setStaleIssues(stale)
-          }
+
         }
       }
     }
@@ -434,12 +413,20 @@ export default function DashboardPage() {
                   className="grid grid-cols-[1fr_80px_100px_60px_80px] gap-2 items-center px-3 py-2.5 rounded-xl hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors"
                 >
                   <div className="min-w-0">
-                    <span className="text-xs font-bold text-stone-900 dark:text-white">
-                      {bugRef(item.bug)}
-                    </span>
-                    <span className="text-xs text-stone-500 dark:text-stone-400 ml-2 truncate">
-                      {item.bug.title.length > 35 ? item.bug.title.slice(0, 35) + '…' : item.bug.title}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-stone-900 dark:text-white">
+                        {bugRef(item.bug)}
+                      </span>
+                      <span className="text-xs text-stone-500 dark:text-stone-400 truncate">
+                        {item.bug.title.length > 30 ? item.bug.title.slice(0, 30) + '…' : item.bug.title}
+                      </span>
+                    </div>
+                    {item.triage && item.triage.reasons.length > 0 && (
+                      <div className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5 truncate" title={item.triage.reasons.join(' · ')}>
+                        ✓ {item.triage.reasons[0]}
+                        {item.triage.reasons.length > 1 && <span className="text-stone-300 dark:text-stone-600"> +{item.triage.reasons.length - 1} more</span>}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -549,24 +536,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stale Issues Alert */}
-      {staleIssues.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 rounded-2xl p-5 border border-amber-200 dark:border-amber-900/50">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-amber-600 dark:text-amber-400 text-sm">⚠️</span>
-            <h3 className="text-sm font-bold text-amber-800 dark:text-amber-300">Stale Issues (7+ days)</h3>
-          </div>
-          <div className="space-y-2">
-            {staleIssues.map((issue) => (
-              <div key={issue.code} className="flex items-center justify-between text-xs">
-                <span className="font-mono font-bold text-amber-700 dark:text-amber-400">{issue.code}</span>
-                <span className="text-amber-600 dark:text-amber-500 truncate mx-2 flex-1">{issue.title}</span>
-                <span className="text-amber-500 dark:text-amber-400 font-mono shrink-0">{issue.days}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
