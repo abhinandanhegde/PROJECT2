@@ -139,7 +139,7 @@ BugNexus tracks software bugs from report to resolution with a full lifecycle st
 ## Project Structure
 
 ```
-T2/
+T2-BugNexus/
 ├── frontend/                    # Next.js 15 application
 │   ├── src/
 │   │   ├── app/                 # App Router pages
@@ -191,9 +191,9 @@ T2/
 bash scripts/setup.sh
 
 # Or non-interactive
-T2_SUPABASE_URL=https://xxx.supabase.co \
-T2_SUPABASE_ANON_KEY=your-anon-key \
-T2_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
+BUGNEXUS_SUPABASE_URL=https://xxx.supabase.co \
+BUGNEXUS_SUPABASE_ANON_KEY=your-anon-key \
+BUGNEXUS_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
 bash scripts/setup.sh --yes
 ```
 
@@ -324,7 +324,7 @@ Browser → Supabase Auth (signup/login) → JWT access token
 | **Security Headers** | X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store |
 | **Request IDs** | Every request gets unique X-Request-ID for tracing |
 | **Structured Logging** | Every request logged as JSON (method, path, status, duration, request_id) |
-| **Rate Limiting** | Per-user sliding window (30/min) on intelligence endpoints → HTTP 429 |
+| **Rate Limiting** | Per-user sliding window (100/min) on intelligence endpoints → HTTP 429 |
 | **Audit Trail** | SECURITY DEFINER function validates actor_id = auth.uid() |
 | **Input Validation** | Pydantic v2 schemas on all endpoints |
 
