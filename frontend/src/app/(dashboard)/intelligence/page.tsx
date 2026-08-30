@@ -69,35 +69,44 @@ export default function IntelligencePage() {
       // Run ALL intelligence in parallel — triage + duplicates + risk for top 8 bugs
       const topBugs = bugs.slice(0, 8)
 
-      const [triageResults, dupResults, riskResults] = await Promise.all([
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
-          )
-        ),
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
-          )
-        ),
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.analyzeRisk(projectId, b.id)
-          )
-        ),
-      ])
+      // Batch triage calls first, then duplicates, then risk — avoid rate limit spikes
+      const triageResults = await Promise.allSettled(
+        topBugs.map((b) =>
+          api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
+        )
+      )
+      const dupResults = await Promise.allSettled(
+        topBugs.map((b) =>
+          api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
+        )
+      )
+      const riskResults = await Promise.allSettled(
+        topBugs.map((b) =>
+          api.analyzeRisk(projectId, b.id)
+        )
+      )
 
       const triageMap = new Map<string, TriageResult>()
       const dupMap = new Map<string, DuplicateResult>()
       const riskMap = new Map<string, RiskResult>()
 
       topBugs.forEach((b, i) => {
-        if (triageResults[i].status === 'fulfilled') triageMap.set(b.id, triageResults[i].value as TriageResult)
+        if (triageResults[i].status === 'fulfilled') {
+          triageMap.set(b.id, triageResults[i].value as TriageResult)
+        } else {
+          console.error('Triage failed for', b.id, triageResults[i].reason)
+        }
         if (dupResults[i].status === 'fulfilled') {
           const dupResult = dupResults[i].value as DuplicateResult
           if (dupResult.candidates && dupResult.candidates.length > 0) dupMap.set(b.id, dupResult)
+        } else {
+          console.error('Duplicates failed for', b.id, dupResults[i].reason)
         }
-        if (riskResults[i].status === 'fulfilled') riskMap.set(b.id, riskResults[i].value as RiskResult)
+        if (riskResults[i].status === 'fulfilled') {
+          riskMap.set(b.id, riskResults[i].value as RiskResult)
+        } else {
+          console.error('Risk failed for', b.id, riskResults[i].reason)
+        }
       })
 
       setState({ bugs, triage: triageMap, duplicates: dupMap, risks: riskMap, impact: impactInfo, loading: false })

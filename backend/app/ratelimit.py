@@ -40,7 +40,7 @@ class SlidingWindowLimiter:
 
 
 # One shared limiter for all intelligence endpoints.
-intel_limiter = SlidingWindowLimiter(limit=30, window_seconds=60)
+intel_limiter = SlidingWindowLimiter(limit=100, window_seconds=60)
 
 
 def rate_limit_intelligence(
