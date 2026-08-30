@@ -1,14 +1,25 @@
 # BugNexus
 
-> A bug tracking platform with deterministic intelligence, dependency graph impact analysis, and database-level security — built in3 days for CloneFest hackathon.
+> A bug tracking platform with deterministic intelligence, dependency graph impact analysis, and database-level security.
 
 **Live Demo:** [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) · **API Docs:** [/docs](https://project2-production-526d.up.railway.app/docs)
 
 ---
 
-## What It Does
+## The Problem
 
-BugNexus tracks software bugs from report to resolution. It adds four intelligence features that most bug trackers don't have: smart triage, duplicate detection, risk analysis, and dependency impact analysis. All run without AI — pure Python rules and PostgreSQL.
+Developers spend **30-40% of their time triaging** instead of fixing bugs. Bug trackers store bugs well but fail at one critical task: **telling you what to fix first.**
+
+BugNexus solves this with four intelligence features that run without AI — pure Python rules and PostgreSQL.
+
+## Try It
+
+Click **⚡ Try Demo Account** on the [login page](https://project-2-sigma-seven.vercel.app/login) — instant access, no signup. Pre-seeded with 73 bugs across 4 projects with relationships, comments, and activity.
+
+**Keyboard shortcuts on the Issues page:**
+- `J` / `K` — navigate up/down
+- `Enter` — open selected bug
+- `Esc` — deselect graph node
 
 ## Architecture
 
@@ -226,7 +237,9 @@ erDiagram
 | Full CRUD | Bugs, comments, components, relationships, projects |
 | Search | Global search with filter, sort, pagination |
 | Audit Trail | Every mutation logged with actor, old/new values, timestamps |
-| Keyboard Shortcuts | J/K navigate, Enter opens, / focuses search |
+| Keyboard Shortcuts | J/K navigate, Enter opens, Esc deselects graph nodes |
+| Skeleton Loading | Every page shows card-shaped skeletons while data loads |
+| Progressive Rendering | Intelligence Center fills in cards as each analysis completes |
 
 ### Intelligence Features
 
@@ -317,14 +330,14 @@ T2/
 │   │   ├── helpers.py            # Role checking, activity logging
 │   │   ├── middleware.py         # Security headers, request ID, access logging
 │   │   ├── exceptions.py         # Custom error classes + handlers
-│   │   ├── routers/              #10 routers (projects, bugs, comments, etc.)
+│   │   ├── routers/              # 10 routers (projects, bugs, comments, etc.)
 │   │   └── models/               # Pydantic request/response schemas
-│   ├── tests/                    #100 backend tests
+│   ├── tests/                    # 100 backend tests
 │   └── requirements.txt
 │
 ├── database/                     # SQL migrations
-│   ├── schema.sql                #11 tables, indexes, enums
-│   ├── rls.sql                   #35 Row-Level Security policies
+│   ├── schema.sql                # 11 tables, indexes, enums
+│   ├── rls.sql                   # 35 Row-Level Security policies
 │   ├── auth_trigger.sql          # Supabase Auth → users sync
 │   ├── audit_function.sql        # log_activity() SECURITY DEFINER
 │   ├── project_creation.sql      # Atomic project + admin creation
@@ -461,7 +474,7 @@ Auto-deploys on push to `main`.
 
 ```
 NEXT_PUBLIC_API_URL=https://project2-production-526d.up.railway.app
-NEXT_PUBLIC_SUPABASE_URL=https://qirqjgenrhhrvpogqnvf.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=***
 NEXT_PUBLIC_SUPABASE_ANON_KEY=***
 ```
 
@@ -470,7 +483,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=***
 Auto-deploys on push to `main`.
 
 ```
-SUPABASE_URL=https://qirqjgenrhhrvpogqnvf.supabase.co
+SUPABASE_URL=***
 SUPABASE_ANON_KEY=***
 SUPABASE_SERVICE_ROLE_KEY=***
 CORS_ORIGINS=https://project-2-sigma-seven.vercel.app
@@ -485,7 +498,7 @@ Click **⚡ Try Demo Account** on the login page — no signup needed.
 - Email: `demo@company.com`
 - Password: `Demo1234!`
 
-Pre-seeded with73 bugs across4 projects, relationships, comments, and activity.
+Pre-seeded with 73 bugs across 4 projects, relationships, comments, and activity.
 
 ---
 
@@ -499,11 +512,13 @@ Features that work but aren't obvious from the landing page:
 | **Activity Timeline** | Every mutation logged: who did what, when, old → new value. Visible on bug detail pages |
 | **Risk Factor Breakdown** | Each risk score shows exactly why: severity(16.2/25), priority(12/15), age(2.5/15), etc. |
 | **Search** | Global full-text search across all projects with filter, sort, pagination |
-| **Keyboard Shortcuts** | J/K navigate bugs, Enter opens, / focuses search, Esc deselects graph nodes |
+| **Keyboard Shortcuts** | J/K navigate bugs, Enter opens, Esc deselects graph nodes |
 | **Project Management** | Create projects, invite members, assign roles — full team workflow |
 | **Component Tracking** | Categorize bugs by component, view component health in reports |
 | **Relationships** | Link bugs as blocks/depends_on/related_to — drives the dependency graph |
 | **User Roles** | 4-tier RBAC with real enforcement — REPORTER can't reassign, only ADMIN can manage members |
+| **Skeleton Loading** | Every page shows card-shaped loading placeholders while data loads |
+| **Progressive Rendering** | Intelligence Center fills in each card independently as analysis completes |
 
 ---
 

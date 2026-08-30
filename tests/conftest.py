@@ -109,6 +109,7 @@ async def auth_client():
     """
     from app.main import app
     from app import dependencies
+    from app import auth
 
     db = MockSupabaseClient()
 
@@ -119,6 +120,7 @@ async def auth_client():
         }
 
     app.dependency_overrides[dependencies.get_current_user_with_client] = _override
+    app.dependency_overrides[auth.get_current_active_user] = lambda: {"id": TEST_USER_ID, "email": "test@example.com", "role": "authenticated"}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac, db
