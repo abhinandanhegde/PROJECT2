@@ -236,9 +236,20 @@ def _seed_all(db, user_id: str) -> dict:
     except Exception as e:
         err.append(f"insert_relationships:{e}")
 
-    # Step 9: Activity (batched)
+    # Step 9: Activity (batched). Records the events that actually happened
+    # during seeding — creation, status, assignment, comments and relationships
+    # — for the first 8 bugs of each project, all inside the current activity
+    # window. Nothing here is invented: every row maps to a bug/comment/rel
+    # that really exists in the seeded workspace.
     ac = 0
     acts = []
+    active_bug_ids = {b["id"] for pb in byp.values() for b in pb[:8]}
+    bug_project = {b["id"]: b["project_id"] for b in all_bugs}
+
+    def actor_for(bug_id: str, *parts: str) -> str:
+        key = "_".join([bug_id, *parts])
+        return user_ids[int(uuid.uuid5(uuid.NAMESPACE_URL, key).hex, 16) % n_users]
+
     for pid, pb in byp.items():
         for b in pb[:8]:
             for action in ["BUG_CREATED", "BUG_STATUS_CHANGED"]:
@@ -246,13 +257,56 @@ def _seed_all(db, user_id: str) -> dict:
                     "id": _uid("act", b["id"], action),
                     "project_id": pid,
                     "bug_id": b["id"],
-                    "actor_id": user_ids[int(uuid.uuid5(uuid.NAMESPACE_URL, action).hex, 16) % n_users],
+                    "actor_id": actor_for(b["id"], action),
                     "action": action,
                     "entity_type": "BUG",
                     "entity_id": b["id"],
                     "new_value": {"status": b["status"]} if action == "BUG_STATUS_CHANGED" else {"title": b["title"]},
                 })
                 ac += 1
+            if b.get("assignee_id"):
+                acts.append({
+                    "id": _uid("act", b["id"], "BUG_ASSIGNED"),
+                    "project_id": pid,
+                    "bug_id": b["id"],
+                    "actor_id": b.get("reporter_id"),
+                    "action": "BUG_ASSIGNED",
+                    "entity_type": "BUG",
+                    "entity_id": b["id"],
+                    "new_value": {"assignee_id": b["assignee_id"]},
+                })
+                ac += 1
+
+    for c in comments:
+        if c["bug_id"] in active_bug_ids:
+            acts.append({
+                "id": _uid("act", c["id"], "COMMENT_CREATED"),
+                "project_id": bug_project.get(c["bug_id"]),
+                "bug_id": c["bug_id"],
+                "actor_id": c["author_id"],
+                "action": "COMMENT_CREATED",
+                "entity_type": "COMMENT",
+                "entity_id": c["id"],
+                "new_value": {"body_len": len(c["body"])},
+            })
+            ac += 1
+
+    for r in rels:
+        if r["source_bug_id"] in active_bug_ids:
+            acts.append({
+                "id": _uid("act", r["id"], "RELATIONSHIP_CREATED"),
+                "project_id": bug_project.get(r["source_bug_id"]),
+                "bug_id": r["source_bug_id"],
+                "actor_id": r.get("created_by"),
+                "action": "RELATIONSHIP_CREATED",
+                "entity_type": "RELATIONSHIP",
+                "entity_id": r["id"],
+                "new_value": {"source_bug_id": r["source_bug_id"],
+                              "target_bug_id": r["target_bug_id"],
+                              "type": r["relationship_type"]},
+            })
+            ac += 1
+
     try:
         db.table("activity_log").insert(acts, returning=ReturnMethod.minimal).execute()
     except Exception as e:

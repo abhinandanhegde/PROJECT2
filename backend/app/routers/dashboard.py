@@ -9,6 +9,60 @@ from app.dependencies import get_current_user_with_client
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
+# Number of days included in the dashboard "this week" activity window. This
+# is the single definition used by BOTH the "Activity This Week" stat and the
+# breakdown, so the two always describe exactly the same records.
+ACTIVITY_WINDOW_DAYS = 7
+
+# Map raw activity actions onto human-readable breakdown categories. Actions
+# not listed keep their raw name (normalized) so members/comments/relationship
+# events still show up rather than being dropped.
+ACTIVITY_CATEGORY_LABELS = {
+    "BUG_CREATED": "Bug Created",
+    "BUG_STATUS_CHANGED": "Status Changed",
+    "BUG_RESOLVED": "Status Changed",
+    "BUG_REOPENED": "Status Changed",
+    "BUG_ASSIGNED": "Assigned",
+    "BUG_PRIORITY_CHANGED": "Priority Changed",
+    "BUG_SEVERITY_CHANGED": "Severity Changed",
+    "BUG_UPDATED": "Bug Updated",
+    "COMMENT_CREATED": "Commented",
+    "COMMENT_DELETED": "Comment Deleted",
+    "RELATIONSHIP_CREATED": "Relationship Added",
+    "RELATIONSHIP_REMOVED": "Relationship Removed",
+    "MEMBER_ADDED": "Member Added",
+    "MEMBER_REMOVED": "Member Removed",
+    "MEMBER_ROLE_CHANGED": "Role Changed",
+    "COMPONENT_CREATED": "Component Created",
+    "COMPONENT_UPDATED": "Component Updated",
+    "PROJECT_CREATED": "Project Created",
+    "PROJECT_UPDATED": "Project Updated",
+    "NOTIFICATION_SENT": "Notification Sent",
+}
+
+
+def _activity_window() -> str:
+    """ISO timestamp marking the start of the current activity window."""
+    return (datetime.now(timezone.utc) - timedelta(days=ACTIVITY_WINDOW_DAYS)).isoformat()
+
+
+def _week_activity_rows(db, project_ids):
+    """All activity records in the current window for the user's projects.
+
+    Used by dashboard_stats (count) and dashboard_activity_breakdown (groupby)
+    so the totals are guaranteed identical — both derive from this one query.
+    """
+    if not project_ids:
+        return []
+    result = (
+        db.table("activity_log")
+        .select("action")
+        .in_("project_id", project_ids)
+        .gte("created_at", _activity_window())
+        .execute()
+    )
+    return result.data or []
+
 
 @router.get("/dashboard/stats")
 async def dashboard_stats(auth=Depends(get_current_user_with_client)):
@@ -42,11 +96,7 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
         )
         unassigned = len(unassigned_resp.data or [])
 
-    recent_activity_count = 0
-    if project_ids:
-        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        activity = db.table("activity_log").select("id").in_("project_id", project_ids).gte("created_at", week_ago).execute()
-        recent_activity_count = len(activity.data or [])
+    recent_activity_count = len(_week_activity_rows(db, project_ids))
 
     return {
         "total_projects": len(project_ids),
@@ -56,6 +106,41 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
         "bugs_by_severity": bugs_by_severity,
         "unassigned": unassigned,
         "recent_activity_count": recent_activity_count,
+    }
+
+
+@router.get("/dashboard/activity-breakdown")
+async def dashboard_activity_breakdown(auth=Depends(get_current_user_with_client)):
+    """Activity events in the current window, grouped by category.
+
+    Uses the exact same query as the "Activity This Week" stat
+    (dashboard_stats.recent_activity_count), so the per-category counts always
+    sum to that headline number.
+    """
+    user = auth["user"]
+    db = auth["db"]
+
+    memberships = db.table("project_members").select("project_id").eq("user_id", user["id"]).execute()
+    project_ids = [m["project_id"] for m in (memberships.data or [])]
+
+    rows = _week_activity_rows(db, project_ids)
+
+    by_category: dict[str, int] = {}
+    for r in rows:
+        raw = r.get("action") or "OTHER"
+        label = ACTIVITY_CATEGORY_LABELS.get(raw, raw.replace("_", " ").title())
+        by_category[label] = by_category.get(label, 0) + 1
+
+    breakdown = [
+        {"label": label, "count": count}
+        for label, count in sorted(by_category.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    return {
+        "total": len(rows),
+        "since": _activity_window(),
+        "window_days": ACTIVITY_WINDOW_DAYS,
+        "breakdown": breakdown,
     }
 
 

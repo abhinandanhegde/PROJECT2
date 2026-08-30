@@ -94,6 +94,9 @@ function settleLayout(
 ): GraphNode[] {
   if (nodes.length === 0) return nodes
 
+  // Vertical headroom reserved above each cluster for its project label pill,
+  // so top-row pills never collide with the discs beneath them.
+  const HEADROOM = 74
   const work = nodes.map((n) => ({ ...n }))
   const nodeIdx = new Map(work.map((n, i) => [n.id, i]))
   const centers = computeCenters(
@@ -146,7 +149,7 @@ function settleLayout(
       node.x += node.vx
       node.y += node.vy
       node.x = Math.max(40, Math.min(width - 40, node.x))
-      node.y = Math.max(40, Math.min(height - 40, node.y))
+      node.y = Math.max(HEADROOM, Math.min(height - HEADROOM, node.y))
       const move = Math.abs(node.vx) + Math.abs(node.vy)
       if (move > maxMove) maxMove = move
     }
@@ -184,7 +187,7 @@ function settleLayout(
   }
   for (const n of work) {
     n.x = Math.max(40, Math.min(width - 40, n.x))
-    n.y = Math.max(40, Math.min(height - 40, n.y))
+    n.y = Math.max(HEADROOM, Math.min(height - HEADROOM, n.y))
   }
   return work.map((n) => ({ ...n, vx: 0, vy: 0 }))
 }
@@ -323,7 +326,7 @@ const projectLabels = useMemo(() => {
     }
     const out: { id: string; x: number; y: number; name: string; n: number }[] = []
     for (const [id, c] of acc)
-      out.push({ id, x: c.x / c.n, y: Math.max(18, c.minY - 40), name: c.name, n: c.n })
+      out.push({ id, x: c.x / c.n, y: Math.max(22, c.minY - 46), name: c.name, n: c.n })
     return out
   }, [nodes])
 

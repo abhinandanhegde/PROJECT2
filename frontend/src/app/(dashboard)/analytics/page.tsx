@@ -3,13 +3,24 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { ActivityLog } from '@/lib/types'
 
 interface SeverityDist {
   name: string
   count: number
   pct: number
   color: string
+}
+
+interface ActivityCount {
+  label: string
+  count: number
+}
+
+interface ActivityBreakdown {
+  total: number
+  since: string
+  window_days: number
+  breakdown: ActivityCount[]
 }
 
 const SEV_COLORS: Record<string, string> = {
@@ -46,16 +57,16 @@ export default function AnalyticsPage() {
     bugsBySeverity: {} as Record<string, number>,
     recentActivityCount: 0,
   })
-  const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([])
+  const [activityBreakdown, setActivityBreakdown] = useState<ActivityBreakdown | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const [statsRes, activityRes] = await Promise.allSettled([
+        const [statsRes, breakdownRes] = await Promise.allSettled([
           api.getDashboardStats(),
-          api.getDashboardRecent(50),
+          api.getActivityBreakdown(),
         ])
 
         if (statsRes.status === 'fulfilled' && statsRes.value) {
@@ -68,8 +79,8 @@ export default function AnalyticsPage() {
           })
         }
 
-        if (activityRes.status === 'fulfilled') {
-          setRecentActivity(activityRes.value?.data || [])
+        if (breakdownRes.status === 'fulfilled' && breakdownRes.value) {
+          setActivityBreakdown(breakdownRes.value)
         }
       } catch {
         // Silent fail
@@ -101,14 +112,11 @@ export default function AnalyticsPage() {
       return { ...s, startAngle: startAngle + GAP, endAngle: endAngle - GAP }
     })
 
-  // Activity by action type
-  const actionCounts: Record<string, number> = {}
-  recentActivity.forEach((a) => {
-    actionCounts[a.action] = (actionCounts[a.action] || 0) + 1
-  })
-  const topActions = Object.entries(actionCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 6)
+  // Activity categories: server-aggregated from the same activity records as
+  // the "Activity This Week" stat (same user projects, same 7-day window), so
+  // the per-category counts always sum to that headline number.
+  const breakdownItems = activityBreakdown?.breakdown || []
+  const breakdownMax = breakdownItems[0]?.count || 1
 
   const metrics = [
     { label: 'Total Bugs Filed', value: stats.totalReported.toString(), change: 'All time' },
@@ -226,9 +234,16 @@ export default function AnalyticsPage() {
 
         {/* Action Distribution */}
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm">
-          <h2 className="font-bold text-base text-stone-900 dark:text-white mb-4">Activity Breakdown</h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-bold text-base text-stone-900 dark:text-white">Activity Breakdown</h2>
+            {!loading && breakdownItems.length > 0 && (
+              <span className="text-xs text-stone-500 dark:text-stone-400">
+                Last {activityBreakdown?.window_days ?? 7} days · {activityBreakdown?.total ?? 0} actions
+              </span>
+            )}
+          </div>
           {loading ? (
-            <div className="space-y-3">
+            <div className="space-y-3 mt-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="animate-pulse flex items-center gap-3">
                   <div className="h-3 w-24 bg-stone-200 dark:bg-stone-800 rounded" />
@@ -237,21 +252,18 @@ export default function AnalyticsPage() {
                 </div>
               ))}
             </div>
-          ) : topActions.length === 0 ? (
+          ) : breakdownItems.length === 0 ? (
             <div className="text-center py-8 text-xs text-stone-400">
               No activity data yet. Start using the app to see analytics.
             </div>
           ) : (
-            <div className="space-y-3">
-              {topActions.map(([action, count]) => {
-                const maxCount = topActions[0]?.[1] || 1
-                const pct = Math.round((count / maxCount) * 100)
-                const label = action.replace(/_/g, ' ').toLowerCase()
-
+            <div className="space-y-3 mt-3">
+              {breakdownItems.map((item) => {
+                const pct = Math.round((item.count / breakdownMax) * 100)
                 return (
-                  <div key={action} className="flex items-center gap-3">
-                    <span className="w-28 text-xs font-medium text-stone-600 dark:text-stone-400 capitalize truncate">
-                      {label}
+                  <div key={item.label} className="flex items-center gap-3">
+                    <span className="w-32 text-xs font-medium text-stone-600 dark:text-stone-400 capitalize truncate">
+                      {item.label}
                     </span>
                     <div className="flex-1 h-3 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
                       <div
@@ -260,7 +272,7 @@ export default function AnalyticsPage() {
                       />
                     </div>
                     <span className="w-10 text-right text-xs font-semibold text-stone-700 dark:text-stone-300">
-                      {count}
+                      {item.count}
                     </span>
                   </div>
                 )
