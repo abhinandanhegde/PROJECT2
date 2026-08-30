@@ -175,7 +175,11 @@ export default function ProjectsPage() {
             const s = p.stats
             const total = s?.total_bugs ?? 0
             const open = s?.open_bugs ?? 0
-            const resolved = s?.resolved_bugs ?? 0
+            const byStatus = s?.bugs_by_status || {}
+            const resolved =
+              (byStatus['RESOLVED'] ?? 0) +
+              (byStatus['VERIFIED'] ?? 0) +
+              (byStatus['CLOSED'] ?? 0)
             const members = s?.member_count ?? 0
             const recent = s?.recent_activity ?? 0
             const health = total > 0 ? Math.round((resolved / total) * 100) : null
