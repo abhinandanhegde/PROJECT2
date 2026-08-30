@@ -1,11 +1,9 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import {
   SearchIcon,
-  BellIcon,
   HelpIcon,
   ChevronDownIcon,
   SunIcon,
@@ -13,47 +11,10 @@ import {
   MenuIcon,
 } from '@/components/ui/Icons'
 import { supabase } from '@/lib/supabase'
-import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
-import type { ActivityLog } from '@/lib/types'
 
 interface HeaderProps {
   onOpenMobileSidebar?: () => void
-}
-
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
-const NOTIF_LABELS: Record<string, string> = {
-  BUG_CREATED: 'New bug created',
-  BUG_UPDATED: 'Bug updated',
-  BUG_ASSIGNED: 'Bug assigned',
-  BUG_STATUS_CHANGED: 'Status changed',
-  BUG_SEVERITY_CHANGED: 'Severity changed',
-  BUG_PRIORITY_CHANGED: 'Priority changed',
-  BUG_RESOLVED: 'Bug resolved',
-  BUG_REOPENED: 'Bug reopened',
-  COMMENT_CREATED: 'New comment',
-}
-
-const NOTIF_COLORS: Record<string, string> = {
-  BUG_CREATED: 'bg-blue-500',
-  BUG_UPDATED: 'bg-orange-500',
-  BUG_ASSIGNED: 'bg-purple-500',
-  BUG_STATUS_CHANGED: 'bg-emerald-500',
-  BUG_SEVERITY_CHANGED: 'bg-red-500',
-  BUG_PRIORITY_CHANGED: 'bg-amber-500',
-  BUG_RESOLVED: 'bg-emerald-600',
-  BUG_REOPENED: 'bg-rose-500',
-  COMMENT_CREATED: 'bg-stone-400',
 }
 
 export default function Header({ onOpenMobileSidebar }: HeaderProps) {
@@ -65,10 +26,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const [userEmail, setUserEmail] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
-  const [notifications, setNotifications] = useState<ActivityLog[]>([])
-  const [notifOpen, setNotifOpen] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
-  const notifRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -90,16 +47,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     setDarkMode(isDark)
     document.documentElement.classList.toggle('dark', isDark)
 
-    // Fetch real notifications from activity log
-    api
-      .getDashboardRecent(15)
-      .then((res) => {
-        const entries = res?.data || []
-        setNotifications(entries)
-        setUnreadCount(entries.length)
-      })
-      .catch(() => {})
-
     // Global Cmd+K keyboard shortcut
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -111,19 +58,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-
-  // Close notification dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false)
-      }
-    }
-    if (notifOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [notifOpen])
 
   const toggleDarkMode = () => {
     const nextDark = !document.documentElement.classList.contains('dark')
@@ -143,11 +77,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     await supabase.auth.signOut()
     success('Logged out successfully')
     router.push('/login')
-  }
-
-  const markAllRead = () => {
-    setUnreadCount(0)
-    setNotifOpen(false)
   }
 
   return (
@@ -195,101 +124,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
         >
           {darkMode ? <SunIcon className="w-4 h-4" /> : <MoonIcon className="w-4 h-4" />}
         </button>
-
-        {/* Notification Bell (Real Data) */}
-        <div className="relative" ref={notifRef}>
-          <button
-            onClick={() => {
-              setNotifOpen(!notifOpen)
-              if (!notifOpen) setUnreadCount(0)
-            }}
-            className="relative p-2 rounded-xl text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-          >
-            <BellIcon className="w-4 h-4" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-orange-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-stone-900">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-
-          {/* Notification Dropdown */}
-          {notifOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-stone-900 rounded-2xl shadow-xl border border-[#eee9e2] dark:border-stone-800 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-              <div className="px-4 py-3 border-b border-[#eee9e2] dark:border-stone-800 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-stone-900 dark:text-white">
-                  Notifications
-                </h3>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={markAllRead}
-                    className="text-xs text-orange-600 dark:text-orange-400 hover:underline font-medium"
-                  >
-                    Mark all read
-                  </button>
-                )}
-              </div>
-
-              <div className="max-h-80 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-xs text-stone-400">
-                    No notifications yet.
-                  </div>
-                ) : (
-                  notifications.slice(0, 10).map((notif) => {
-                    const label = NOTIF_LABELS[notif.action] || notif.action.replace(/_/g, ' ').toLowerCase()
-                    const color = NOTIF_COLORS[notif.action] || 'bg-stone-400'
-
-                    return (
-                      <div
-                        key={notif.id}
-                        className="px-4 py-3 border-b border-stone-50 dark:border-stone-800/50 hover:bg-stone-50 dark:hover:bg-stone-800/40 transition-colors"
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${color}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-stone-900 dark:text-white">
-                              {label}
-                            </p>
-                            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 truncate">
-                              {notif.actor_name || 'User'} •{' '}
-                              {notif.bug_id ? (
-                                <Link
-                                  href={`/bugs/${notif.bug_id}`}
-                                  onClick={() => setNotifOpen(false)}
-                                  className="text-orange-600 dark:text-orange-400 hover:underline"
-                                >
-                                  {notif.bug_id}
-                                </Link>
-                              ) : (
-                                notif.entity_type
-                              )}
-                            </p>
-                          </div>
-                          <span className="text-[10px] text-stone-400 whitespace-nowrap">
-                            {timeAgo(notif.created_at)}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-
-              {notifications.length > 0 && (
-                <div className="px-4 py-2.5 border-t border-[#eee9e2] dark:border-stone-800 text-center">
-                  <Link
-                    href="/analytics"
-                    onClick={() => setNotifOpen(false)}
-                    className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
-                  >
-                    View all activity →
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
         {/* Help Icon */}
         <button
