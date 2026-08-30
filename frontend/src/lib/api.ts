@@ -124,6 +124,7 @@ export const api = {
   getDashboardStats: () => authFetch('/api/dashboard/stats'),
   getDashboardRecent: (limit?: number) => authFetch(`/api/dashboard/recent${limit ? `?limit=${limit}` : ''}`),
   getActivityBreakdown: () => authFetch('/api/dashboard/activity-breakdown'),
+  getDashboardIntelligence: () => authFetch('/api/dashboard/intelligence'),
   getDashboardAssigned: (params?: { status?: string; page?: number; per_page?: number }) => {
     const filtered: Record<string, string> = params ? Object.fromEntries(
       Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])

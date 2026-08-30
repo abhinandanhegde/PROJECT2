@@ -88,6 +88,7 @@ export default function DashboardPage() {
   const [triageLoading, setTriageLoading] = useState(true)
   const [activityLoading, setActivityLoading] = useState(true)
   const [staleIssues, setStaleIssues] = useState<{ code: string; title: string; days: string }[]>([])
+  const [intel, setIntel] = useState({ triaged: 0, total: 0, avgRisk: 0, blocking: 0, critical: 0 })
 
   const loadTriageData = useCallback(async (projectId: string, bugs: Bug[]) => {
     setTriageLoading(true)
@@ -130,11 +131,12 @@ export default function DashboardPage() {
       }
     })
 
-    // PHASE 1: Stats + Activity in parallel (fastest — just 2 calls)
+    // PHASE 1: Stats + Activity + Intelligence in parallel (fastest — 3 calls)
     const loadPhase1 = async () => {
-      const [statsResult, activityResult] = await Promise.allSettled([
+      const [statsResult, activityResult, intelResult] = await Promise.allSettled([
         api.getDashboardStats(),
         api.getDashboardRecent(10),
+        api.getDashboardIntelligence(),
       ])
 
       if (statsResult.status === 'fulfilled') {
@@ -162,6 +164,17 @@ export default function DashboardPage() {
         })
       }
       setActivityLoading(false)
+
+      if (intelResult.status === 'fulfilled') {
+        const d = intelResult.value as Record<string, unknown>
+        setIntel({
+          triaged: Number(d.triaged_count) || 0,
+          total: Number(d.total_open) || 0,
+          avgRisk: Number(d.avg_risk_score) || 0,
+          blocking: Number(d.blocking_edges) || 0,
+          critical: Number(d.critical_bugs) || 0,
+        })
+      }
 
       // PHASE 2: Triage (loads after stats are visible)
       const projectsResult = await Promise.allSettled([api.getProjects()])
@@ -330,6 +343,44 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Intelligence Summary Bar */}
+      {intel.total > 0 && (
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 rounded-2xl p-4 border border-orange-200 dark:border-orange-900/50">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm">🧠</span>
+            <h3 className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider">Intelligence Overview</h3>
+          </div>
+          <div className="flex flex-wrap gap-4 sm:gap-6 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-stone-600 dark:text-stone-400">
+                <span className="font-bold text-stone-900 dark:text-white">{intel.triaged}</span>/{intel.total} bugs triaged
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-stone-600 dark:text-stone-400">
+                Avg risk: <span className="font-bold text-stone-900 dark:text-white">{intel.avgRisk}</span>/100
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="text-stone-600 dark:text-stone-400">
+                <span className="font-bold text-stone-900 dark:text-white">{intel.blocking}</span> blocking edges
+              </span>
+            </div>
+            {intel.critical > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                <span className="text-red-600 dark:text-red-400 font-semibold">
+                  {intel.critical} critical unassigned
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Smart Triage Queue + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

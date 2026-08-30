@@ -189,3 +189,65 @@ async def dashboard_assigned(
         "page": page,
         "per_page": per_page,
     }
+
+
+@router.get("/dashboard/intelligence")
+async def dashboard_intelligence(auth=Depends(get_current_user_with_client)):
+    """Intelligence summary for the dashboard — visible without clicks."""
+    user = auth["user"]
+    db = auth["db"]
+
+    memberships = db.table("project_members").select("project_id").eq("user_id", user["id"]).execute()
+    project_ids = [m["project_id"] for m in (memberships.data or [])]
+    if not project_ids:
+        return {"triaged_count": 0, "avg_risk_score": 0, "blocking_edges": 0, "critical_bugs": 0}
+
+    # All open bugs across user's projects
+    bugs_result = (
+        db.table("bugs")
+        .select("id, status, severity, priority, assignee_id, created_at, updated_at")
+        .in_("project_id", project_ids)
+        .in_("status", ["NEW", "CONFIRMED", "IN_PROGRESS", "REOPENED"])
+        .execute()
+    )
+    bugs = bugs_result.data or []
+
+    # Count bugs that have moved past NEW (triaged = someone touched them)
+    triaged = sum(1 for b in bugs if b["status"] != "NEW")
+
+    # Quick risk estimate: count high-severity unassigned bugs
+    critical_bugs = sum(
+        1 for b in bugs
+        if b.get("severity") in ("BLOCKER", "CRITICAL") and not b.get("assignee_id")
+    )
+
+    # Blocking relationships
+    bug_ids = [b["id"] for b in bugs]
+    blocking_edges = 0
+    if bug_ids:
+        rels = (
+            db.table("relationships")
+            .select("id")
+            .eq("relationship_type", "blocks")
+            .in_("source_bug_id", bug_ids)
+            .execute()
+        )
+        blocking_edges = len(rels.data or [])
+
+    # Average risk score (simplified: based on severity + assignment)
+    from app.routers.intelligence import _RISK_SEVERITY_MAP, _RISK_PRIORITY_MAP
+    total_score = 0.0
+    for b in bugs:
+        sev_score = _RISK_SEVERITY_MAP.get(b.get("severity", "NORMAL"), 0.4) * 25
+        pri_score = _RISK_PRIORITY_MAP.get(b.get("priority", "P3"), 0.5) * 15
+        assign_score = 5 if not b.get("assignee_id") else 0
+        total_score += sev_score + pri_score + assign_score
+    avg_risk = round(total_score / len(bugs), 1) if bugs else 0
+
+    return {
+        "triaged_count": triaged,
+        "total_open": len(bugs),
+        "avg_risk_score": avg_risk,
+        "blocking_edges": blocking_edges,
+        "critical_bugs": critical_bugs,
+    }
