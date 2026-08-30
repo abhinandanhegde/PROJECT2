@@ -2,9 +2,9 @@
 T2 Bug Tracker — Security & Logging Middleware
 
 Provides:
-1. Security headers middleware (X-Content-Type-Options, X-Frame-Options, etc.)
-2. Request ID middleware (adds X-Request-ID to every response)
-3. Access log middleware (structured JSON request logging)
+    1. Security headers middleware (X-Content-Type-Options, X-Frame-Options, etc.)
+    2. Request ID middleware (adds X-Request-ID to every response)
+    3. Access log middleware (structured JSON request logging, X-Response-Time header)
 """
 
 import json
@@ -122,6 +122,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             raise
 
         duration_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000, 3)
+        response.headers["X-Response-Time"] = f"{duration_ms:.3f}ms"
         log_entry = {
             "level": "REQUEST",
             "ts": time.time(),
