@@ -53,6 +53,7 @@ export interface Component {
 
 export interface Bug {
   id: string
+  number?: number | null
   project_id: string
   component_id?: string | null
   title: string
@@ -170,4 +171,12 @@ export function shortBugId(id: string): string {
   if (id.startsWith('BUG-')) return id
   if (id.length > 8) return `#${id.slice(0, 8)}`
   return `#${id}`
+}
+
+/**
+ * Display reference for a bug object. Prefers the stable sequential number
+ * (#121) the API attaches, falling back to the short ID form.
+ */
+export function bugRef(b: { id: string; number?: number | null }): string {
+  return b.number != null ? `#${b.number}` : shortBugId(b.id)
 }

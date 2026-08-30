@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import type { Bug, TriageResult } from '@/lib/types'
-import { shortBugId } from '@/lib/types'
+import { bugRef } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 
 type Tab = 'all' | 'assigned' | 'reported'
@@ -336,7 +336,7 @@ const visibleBugs = useMemo(() => {
                   >
                     <div className="col-span-5 pr-2">
                       <span className="text-xs font-bold text-orange-600 dark:text-orange-400">
-                        <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{shortBugId(item.bug.id)}</Link>
+                        <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{bugRef(item.bug)}</Link>
                       </span>
                       <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
                         <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{item.bug.title}</Link>
@@ -455,7 +455,7 @@ const visibleBugs = useMemo(() => {
                 {visibleBugs.map((bug) => (
                   <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
                     <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
-                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{shortBugId(bug.id)}</Link>
+                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{bugRef(bug)}</Link>
                     </td>
                     <td className="py-3.5 px-4 font-medium text-stone-900 dark:text-white max-w-xs truncate">
                       <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.title}</Link>
@@ -503,7 +503,7 @@ const visibleBugs = useMemo(() => {
               <div key={bug.id} className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
-                    <Link href={`/bugs/${bug.id}`}>{shortBugId(bug.id)}</Link>
+                    <Link href={`/bugs/${bug.id}`}>{bugRef(bug)}</Link>
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
                 </div>

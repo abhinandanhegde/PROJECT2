@@ -65,6 +65,19 @@ def require_project_role_any(
     return role
 
 
+def bug_number_map(db) -> dict[str, int]:
+    """
+    Stable display numbers for bugs (#1, #2, ...). Numbering is global,
+    derived once from the full bug set ordered by created_at (then id as a
+    tiebreak), so a bug keeps the same number on every page — lists, detail,
+    search, graph — regardless of filters. No schema column required.
+    """
+    result = db.table("bugs").select("id, created_at").order("created_at").execute()
+    rows = result.data or []
+    rows.sort(key=lambda b: (b.get("created_at") or "", b["id"]))
+    return {b["id"]: i + 1 for i, b in enumerate(rows)}
+
+
 def log_activity(
     db,
     project_id: str,

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from app.dependencies import get_current_user_with_client
 from app.models.relationships import RelationshipCreate, RelationshipResponse
 from app.exceptions import NotFoundError, ConflictError, ValidationError
-from app.helpers import log_activity
+from app.helpers import log_activity, bug_number_map
 
 router = APIRouter(prefix="/api", tags=["relationships"])
 
@@ -74,9 +74,11 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "relationship_type": r["relationship_type"],
         })
 
+    numbers = bug_number_map(db)
     nodes = [
         {
             "id": b["id"],
+            "number": numbers.get(b["id"]),
             "title": b["title"],
             "status": b["status"],
             "severity": b["severity"],

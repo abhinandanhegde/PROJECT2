@@ -3,10 +3,11 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import { shortBugId } from '@/lib/types'
+import { bugRef } from '@/lib/types'
 
 interface GraphNode {
   id: string
+  number?: number | null
   title: string
   status: string
   severity: string
@@ -26,6 +27,7 @@ interface GraphEdge {
 
 interface GraphNodePayload {
   id: string
+  number?: number | null
   title: string
   status: string
   severity: string
@@ -307,17 +309,21 @@ export default function GraphPage() {
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
 
   // Live cluster centroid + project name, drawn as a label above each group
-  const projectLabels = useMemo(() => {
-    const acc = new Map<string, { x: number; y: number; n: number; name: string }>()
+  // Project label position: centered horizontally on the cluster, but raised
+// above its topmost node so the pill never sits on top of the discs.
+const projectLabels = useMemo(() => {
+    const acc = new Map<string, { x: number; y: number; minY: number; n: number; name: string }>()
     for (const n of nodes) {
-      const c = acc.get(n.projectId) || { x: 0, y: 0, n: 0, name: n.projectName }
+      const c = acc.get(n.projectId) || { x: 0, y: 0, minY: Infinity, n: 0, name: n.projectName }
       c.x += n.x
       c.y += n.y
       c.n++
+      c.minY = Math.min(c.minY, n.y)
       acc.set(n.projectId, c)
     }
     const out: { id: string; x: number; y: number; name: string; n: number }[] = []
-    for (const [id, c] of acc) out.push({ id, x: c.x / c.n, y: c.y / c.n, name: c.name, n: c.n })
+    for (const [id, c] of acc)
+      out.push({ id, x: c.x / c.n, y: Math.max(18, c.minY - 40), name: c.name, n: c.n })
     return out
   }, [nodes])
 
@@ -419,7 +425,7 @@ export default function GraphPage() {
               <g key={p.id}>
                 <rect
                   x={p.x - 100}
-                  y={p.y - 42}
+                  y={p.y}
                   width={200}
                   height={18}
                   rx={9}
@@ -428,7 +434,7 @@ export default function GraphPage() {
                 />
                 <text
                   x={p.x + 8}
-                  y={p.y - 29}
+                  y={p.y + 13.5}
                   textAnchor="middle"
                   fontSize="10"
                   fontWeight="700"
@@ -436,10 +442,10 @@ export default function GraphPage() {
                 >
                   {p.name}
                 </text>
-                <circle cx={p.x - 90} cy={p.y - 33} r={6} fill="#d6d3d1" />
+                <circle cx={p.x - 90} cy={p.y + 9} r={6} fill="#d6d3d1" />
                 <text
                   x={p.x - 90}
-                  y={p.y - 30.5}
+                  y={p.y + 11.5}
                   textAnchor="middle"
                   fontSize="7"
                   fontWeight="800"
@@ -494,7 +500,7 @@ export default function GraphPage() {
                   className="cursor-pointer"
                   style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
                 >
-                  <title>{`${shortBugId(node.id)} — ${node.title} (${node.status.replace('_', ' ')})`}</title>
+                  <title>{`${bugRef(node)} — ${node.title} (${node.status.replace('_', ' ')})`}</title>
                   {isSelected && (
                     <circle cx={node.x} cy={node.y} r={19} fill={color} opacity={0.18} />
                   )}
@@ -521,7 +527,7 @@ export default function GraphPage() {
                     strokeWidth={2}
                     style={{ pointerEvents: 'none', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {node.id.slice(0, 6)}
+                    {node.number != null ? `#${node.number}` : node.id.slice(0, 6)}
                   </text>
                 </g>
               )
@@ -541,7 +547,7 @@ export default function GraphPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: STATUS_COLORS[node.status] }} />
-                      <span className="font-mono font-bold text-sm text-orange-600 dark:text-orange-400">{shortBugId(node.id)}</span>
+                      <span className="font-mono font-bold text-sm text-orange-600 dark:text-orange-400">{bugRef(node)}</span>
                       <span className="text-xs text-stone-500">•</span>
                       <span className="text-xs text-stone-600 dark:text-stone-300 font-medium">{node.title}</span>
                     </div>
@@ -567,7 +573,7 @@ export default function GraphPage() {
                           onClick={() => handleNodeClick(otherId)}
                           className="px-2 py-1 rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-medium text-stone-700 dark:text-stone-300 hover:border-orange-500 transition-colors"
                         >
-                          {direction} {shortBugId(otherId)} ({e.type.replace('_', ' ')})
+                          {direction} {bugRef(nodeById.get(otherId) ?? { id: otherId })} ({e.type.replace('_', ' ')})
                         </button>
                       )
                     })}

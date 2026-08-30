@@ -10,7 +10,7 @@ from app.models.bugs import (
     StatusChangeRequest, AssignRequest, VALID_TRANSITIONS,
 )
 from app.exceptions import NotFoundError, AuthorizationError, ValidationError
-from app.helpers import require_project_role, log_activity, ROLE_HIERARCHY
+from app.helpers import require_project_role, log_activity, ROLE_HIERARCHY, bug_number_map
 
 router = APIRouter(prefix="/api", tags=["bugs"])
 
@@ -62,6 +62,7 @@ async def create_bug(
         log_activity(db, project_id, user["id"], "BUG_ASSIGNED", "BUG", created["id"],
                      {"assignee_id": bug.assignee_id})
 
+    created["number"] = bug_number_map(db).get(created["id"])
     return created
 
 
@@ -129,8 +130,9 @@ async def list_bugs(
         count_result = count_result.or_(_or_search_filter(search))
     count_resp = count_result.execute()
 
+    numbers = bug_number_map(db)
     return {
-        "data": [_attach_names(b) for b in (result.data or [])],
+        "data": [_attach_names(b, numbers) for b in (result.data or [])],
         "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
@@ -149,7 +151,7 @@ async def get_bug(
     if not result.data:
         raise NotFoundError("Bug not found")
     bug = result.data[0]
-    _attach_names(bug)
+    _attach_names(bug, bug_number_map(db))
     return bug
 
 
@@ -208,7 +210,9 @@ async def update_bug(
         log_activity(db, project_id, user["id"], "BUG_UPDATED", "BUG", bug_id,
                      {"fields": list(other_fields)})
 
-    return result.data[0]
+    updated = result.data[0]
+    updated["number"] = bug_number_map(db).get(updated["id"])
+    return updated
 
 
 @router.patch("/projects/{project_id}/bugs/{bug_id}/status", response_model=BugResponse)
@@ -262,7 +266,9 @@ async def change_bug_status(
                  {"old_status": current_status, "new_status": new_status,
                   "resolution": body.resolution.value if body.resolution else None})
 
-    return result.data[0]
+    changed = result.data[0]
+    changed["number"] = bug_number_map(db).get(changed["id"])
+    return changed
 
 
 @router.patch("/projects/{project_id}/bugs/{bug_id}/assign", response_model=BugResponse)
@@ -285,7 +291,9 @@ async def assign_bug(
 
     log_activity(db, project_id, user["id"], "BUG_ASSIGNED", "BUG", bug_id,
                  {"old": existing.data[0].get("assignee_id"), "new": body.assignee_id})
-    return result.data[0]
+    assigned = result.data[0]
+    assigned["number"] = bug_number_map(db).get(assigned["id"])
+    return assigned
 
 
 @router.get("/bugs/search")
@@ -312,7 +320,7 @@ async def search_bugs(
         .execute()
     )
     return {
-        "data": [_attach_names(b) for b in (result.data or [])],
+        "data": [_attach_names(b, bug_number_map(db)) for b in (result.data or [])],
         "total": len(count_resp.data or []),
         "page": page,
         "per_page": per_page,
@@ -340,10 +348,11 @@ def _or_search_filter(value: str) -> str:
     return f"title.ilike.%{value}%,description.ilike.%{value}%"
 
 
-def _attach_names(bug: dict) -> dict:
+def _attach_names(bug: dict, numbers: Optional[dict] = None) -> dict:
     """
     Map nested joins `reporter`/`assignee` ({id, display_name}) onto flat
-    `reporter_name`/`assignee_name` fields for the frontend.
+    `reporter_name`/`assignee_name` fields for the frontend. Also attaches the
+    stable display `number` (#1, #2, ...) when a number map was built.
     """
     reporter = bug.pop("reporter", None)
     assignee = bug.pop("assignee", None)
@@ -351,4 +360,6 @@ def _attach_names(bug: dict) -> dict:
         bug["reporter_name"] = reporter.get("display_name") if isinstance(reporter, dict) else reporter
     if assignee is not None:
         bug["assignee_name"] = assignee.get("display_name") if isinstance(assignee, dict) else assignee
+    if numbers and bug.get("id") in numbers:
+        bug["number"] = numbers[bug["id"]]
     return bug

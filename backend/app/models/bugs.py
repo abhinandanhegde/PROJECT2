@@ -81,6 +81,7 @@ class AssignRequest(BaseModel):
 
 class BugResponse(BaseModel):
     id: str
+    number: Optional[int] = None
     project_id: str
     title: str
     description: Optional[str] = None
