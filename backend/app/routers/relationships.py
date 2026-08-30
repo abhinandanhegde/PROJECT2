@@ -11,6 +11,78 @@ from app.helpers import log_activity
 
 router = APIRouter(prefix="/api", tags=["relationships"])
 
+# Cap how many bugs the graph will draw. Keeps the force simulation smooth
+# while still covering every bug in the seeded demo (4 projects).
+GRAPH_BUG_LIMIT = 150
+
+
+@router.get("/graph")
+async def bug_graph(auth=Depends(get_current_user_with_client)):
+    """Return bugs + relationships in ONE round trip for the graph page.
+
+    Previously the frontend issued one request per project plus one per bug
+    (N+1). This endpoint collapses all of that into a single call that reads
+    every relationship touching the visible bugs in two bulk queries.
+    """
+    user = auth["user"]
+    db = auth["db"]
+
+    memberships = db.table("project_members").select("project_id").eq("user_id", user["id"]).execute()
+    project_ids = [m["project_id"] for m in (memberships.data or [])]
+    if not project_ids:
+        return {"data": {"nodes": [], "edges": []}}
+
+    bug_res = (
+        db.table("bugs")
+        .select("id, title, status, severity, project_id")
+        .in_("project_id", project_ids)
+        .order("created_at", desc=True)
+        .limit(GRAPH_BUG_LIMIT)
+        .execute()
+    )
+    bugs = bug_res.data or []
+    bug_ids = [b["id"] for b in bugs]
+    if not bug_ids:
+        return {"data": {"nodes": [], "edges": []}}
+
+    outgoing = (
+        db.table("relationships")
+        .select("source_bug_id, target_bug_id, relationship_type")
+        .in_("source_bug_id", bug_ids)
+        .execute()
+    )
+    incoming = (
+        db.table("relationships")
+        .select("source_bug_id, target_bug_id, relationship_type")
+        .in_("target_bug_id", bug_ids)
+        .execute()
+    )
+
+    edges = []
+    seen = set()
+    for r in (outgoing.data or []) + (incoming.data or []):
+        key = (r["source_bug_id"], r["target_bug_id"], r["relationship_type"])
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append({
+            "source_bug_id": r["source_bug_id"],
+            "target_bug_id": r["target_bug_id"],
+            "relationship_type": r["relationship_type"],
+        })
+
+    nodes = [
+        {
+            "id": b["id"],
+            "title": b["title"],
+            "status": b["status"],
+            "severity": b["severity"],
+            "project_id": b["project_id"],
+        }
+        for b in bugs
+    ]
+    return {"data": {"nodes": nodes, "edges": edges}}
+
 
 def _get_bug_project_id(db, bug_id: str) -> str:
     result = db.table("bugs").select("project_id").eq("id", bug_id).execute()

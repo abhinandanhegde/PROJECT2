@@ -83,6 +83,9 @@ export const api = {
   deleteRelationship: (bugId: string, relId: string) =>
     authFetch(`/api/bugs/${bugId}/relationships/${relId}`, { method: 'DELETE' }),
 
+  // ── Graph (single round trip: all visible nodes + edges) ──
+  getGraph: () => authFetch('/api/graph'),
+
   // ── Dashboard ──
   getDashboardStats: () => authFetch('/api/dashboard/stats'),
   getDashboardRecent: (limit?: number) => authFetch(`/api/dashboard/recent${limit ? `?limit=${limit}` : ''}`),

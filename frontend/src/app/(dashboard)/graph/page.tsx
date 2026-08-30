@@ -1,9 +1,8 @@
 'use client'
 
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Bug, Relationship } from '@/lib/types'
 import { shortBugId } from '@/lib/types'
 
 interface GraphNode {
@@ -21,6 +20,20 @@ interface GraphEdge {
   source: string
   target: string
   type: 'blocks' | 'depends_on' | 'related_to'
+}
+
+interface GraphNodePayload {
+  id: string
+  title: string
+  status: string
+  severity: string
+  project_id: string
+}
+
+interface GraphEdgePayload {
+  source_bug_id: string
+  target_bug_id: string
+  relationship_type: string
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -77,62 +90,31 @@ export default function GraphPage() {
     async function load() {
       setLoading(true)
       try {
-        const projRes = await api.getProjects().catch(() => null)
-        const projects = projRes?.data || []
+        // Single round trip: the backend returns all visible nodes + edges.
+        const graphRes = await api.getGraph().catch(() => null)
+        const graph: { nodes?: GraphNodePayload[]; edges?: GraphEdgePayload[] } =
+          graphRes?.data || {}
 
-        const allNodes: GraphNode[] = []
-        const allEdges: GraphEdge[] = []
-        const nodeSet = new Set<string>()
+        const allNodes: GraphNode[] = (graph.nodes || []).map((b) => ({
+          id: b.id,
+          title: b.title,
+          status: b.status,
+          severity: b.severity,
+          x: Math.random() * 800 + 50,
+          y: Math.random() * 400 + 50,
+          vx: 0,
+          vy: 0,
+        }))
 
-        const allBugIds: string[] = []
-        for (const proj of projects) {
-          try {
-            const bugRes = await api.getBugs(proj.id, { per_page: '50' })
-            const bugs: Bug[] = bugRes?.data || []
-
-            bugs.forEach((bug) => {
-              if (!nodeSet.has(bug.id)) {
-                nodeSet.add(bug.id)
-                allNodes.push({
-                  id: bug.id,
-                  title: bug.title,
-                  status: bug.status,
-                  severity: bug.severity,
-                  x: Math.random() * 800 + 50,
-                  y: Math.random() * 400 + 50,
-                  vx: 0,
-                  vy: 0,
-                })
-                allBugIds.push(bug.id)
-              }
-            })
-          } catch {
-            // Skip failed projects
-          }
-        }
+        const allEdges: GraphEdge[] = (graph.edges || [])
+          .filter((e) => e.source_bug_id !== e.target_bug_id)
+          .map((e) => ({
+            source: e.source_bug_id,
+            target: e.target_bug_id,
+            type: e.relationship_type as GraphEdge['type'],
+          }))
 
         setNodes(allNodes)
-
-        // Batch-fetch ALL relationships in parallel — not N+1
-        const relResults = await Promise.allSettled(
-          allBugIds.map((bid) => api.getRelationships(bid))
-        )
-        const edgeSet = new Set<string>()
-        for (const r of relResults) {
-          if (r.status !== 'fulfilled') continue
-          const rels: Relationship[] = r.value?.data || []
-          for (const rel of rels) {
-            const key = `${rel.source_bug_id}-${rel.target_bug_id}-${rel.relationship_type}`
-            if (!edgeSet.has(key)) {
-              edgeSet.add(key)
-              allEdges.push({
-                source: rel.source_bug_id,
-                target: rel.target_bug_id,
-                type: rel.relationship_type as GraphEdge['type'],
-              })
-            }
-          }
-        }
         setEdges(allEdges)
       } catch {
         // Silent fail
@@ -143,22 +125,32 @@ export default function GraphPage() {
     load()
   }, [])
 
-  // Simple force simulation
+  // Simple force simulation — edge lookups are O(1) via index maps, and the
+  // sim stops early once the layout settles instead of a fixed frame count.
   useEffect(() => {
     if (nodes.length === 0) return
 
     let frameId: number
-    const currentNodes = [...nodes]
-    const edgeList = edges
+    const currentNodes = nodes.map((n) => ({ ...n }))
+    const nodeIdx = new Map(currentNodes.map((n, i) => [n.id, i]))
 
-    // Run for a fixed number of frames then stop
+    // Precompute edges as index pairs (O(E) once, O(E) per frame — not O(E·N))
+    const edgePairs: number[][] = []
+    for (const e of edges) {
+      const s = nodeIdx.get(e.source)
+      const t = nodeIdx.get(e.target)
+      if (s !== undefined && t !== undefined && s !== t) edgePairs.push([s, t])
+    }
+
+    const { width, height } = dimensions
+    const centerX = width / 2
+    const centerY = height / 2
+
     let frameCount = 0
+    let settledFrames = 0
     function runFrames() {
-      if (frameCount > 120) return
+      if (frameCount > 90 || settledFrames > 15) return
       frameCount++
-      const { width, height } = dimensions
-      const centerX = width / 2
-      const centerY = height / 2
 
       for (let i = 0; i < currentNodes.length; i++) {
         const node = currentNodes[i]
@@ -174,27 +166,34 @@ export default function GraphPage() {
           node.vx += (dx / dist) * force
           node.vy += (dy / dist) * force
         }
-        for (const edge of edgeList) {
-          let other: GraphNode | undefined
-          if (edge.source === node.id) other = currentNodes.find((n) => n.id === edge.target)
-          if (edge.target === node.id) other = currentNodes.find((n) => n.id === edge.source)
-          if (other) {
-            const dx = other.x - node.x
-            const dy = other.y - node.y
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1
-            const force = (dist - 120) * 0.005
-            node.vx += (dx / dist) * force
-            node.vy += (dy / dist) * force
-          }
-        }
+      }
+
+      for (const [si, ti] of edgePairs) {
+        const node = currentNodes[si]
+        const other = currentNodes[ti]
+        const dx = other.x - node.x
+        const dy = other.y - node.y
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1
+        const force = (dist - 120) * 0.005
+        node.vx += (dx / dist) * force
+        node.vy += (dy / dist) * force
+      }
+
+      let maxMove = 0
+      for (let i = 0; i < currentNodes.length; i++) {
+        const node = currentNodes[i]
         node.vx *= 0.9
         node.vy *= 0.9
         node.x += node.vx
         node.y += node.vy
         node.x = Math.max(40, Math.min(width - 40, node.x))
         node.y = Math.max(40, Math.min(height - 40, node.y))
+        const move = Math.abs(node.vx) + Math.abs(node.vy)
+        if (move > maxMove) maxMove = move
       }
-      setNodes([...currentNodes])
+      settledFrames = maxMove < 0.05 ? settledFrames + 1 : 0
+
+      setNodes(currentNodes.map((n) => ({ ...n })))
       frameId = requestAnimationFrame(runFrames)
     }
 
@@ -206,6 +205,9 @@ export default function GraphPage() {
   const handleNodeClick = useCallback((id: string) => {
     setSelectedNode((prev) => (prev === id ? null : id))
   }, [])
+
+  // O(1) node lookups for the render path (rebuilt per nodes tick)
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
 
   // Filter edges connected to selected node
   const highlightedEdges = selectedNode
@@ -280,8 +282,8 @@ export default function GraphPage() {
           >
             {/* Edges */}
             {highlightedEdges.map((edge, idx) => {
-              const source = nodes.find((n) => n.id === edge.source)
-              const target = nodes.find((n) => n.id === edge.target)
+              const source = nodeById.get(edge.source)
+              const target = nodeById.get(edge.target)
               if (!source || !target) return null
 
               const color = EDGE_COLORS[edge.type] || '#94a3b8'
@@ -410,7 +412,7 @@ export default function GraphPage() {
 
           {/* Selected node info panel */}
           {selectedNode && (() => {
-            const node = nodes.find((n) => n.id === selectedNode)
+            const node = nodeById.get(selectedNode)
             if (!node) return null
             const connectedEdges = edges.filter(
               (e) => e.source === selectedNode || e.target === selectedNode
