@@ -45,30 +45,36 @@ export default function LoginPage() {
     const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo1234!'
     const demoName = process.env.NEXT_PUBLIC_DEMO_NAME || 'Demo User'
 
-    // Step 1: Call backend to create user + seed data
+    // Step 1: If the demo account is already seeded, skip re-seeding (~15s faster)
     try {
-      const res = await fetch(`${API_URL}/api/demo/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: demoEmail,
-          password: demoPassword,
-          display_name: demoName,
-        }),
-      })
+      const readyRes = await fetch(`${API_URL}/api/demo/verify`)
+      const readyData = await readyRes.json().catch(() => ({}))
+      const isReady = readyData?.ready === true
 
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(`Demo setup failed: ${data.detail || 'Unknown error'}. Make sure backend is running.`)
-        setLoading(false)
-        return
-      }
+      if (!isReady) {
+        const res = await fetch(`${API_URL}/api/demo/setup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: demoEmail,
+            password: demoPassword,
+            display_name: demoName,
+          }),
+        })
 
-      // Confirm data actually landed before signing in.
-      if (typeof data.bugs === 'number' && data.bugs === 0) {
-        setError('Demo data did not seed successfully. Try again in a moment.')
-        setLoading(false)
-        return
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setError(`Demo setup failed: ${data.detail || 'Unknown error'}. Make sure backend is running.`)
+          setLoading(false)
+          return
+        }
+
+        // Confirm data actually landed before signing in.
+        if (typeof data.bugs === 'number' && data.bugs === 0) {
+          setError('Demo data did not seed successfully. Try again in a moment.')
+          setLoading(false)
+          return
+        }
       }
     } catch {
       setError('Cannot reach backend. Make sure the backend API is running and reachable.')

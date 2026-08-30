@@ -1,6 +1,7 @@
 """
 Demo Router — Bulletproof one-click demo.
 Handles every edge case: user exists, user doesn't exist, partial seed, etc.
+Seeding uses batched inserts (returning=minimal) so the first click is fast.
 """
 import os
 import uuid
@@ -9,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from postgrest.types import ReturnMethod
 from app.supabase_client import get_service_role_client
 
 router = APIRouter(prefix="/api/demo", tags=["demo"])
@@ -28,8 +30,9 @@ class DemoSetupRequest(BaseModel):
 
 from app.seed_data import (
     USERS, PROJECTS, ROLES, COMPONENTS_PER_PROJECT,
-    BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES
+    PROJECT_BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES
 )
+
 
 def _uid(*parts: str) -> str:
     """Deterministic UUID from parts — keeps the seed idempotent."""
@@ -50,8 +53,14 @@ def _find_demo_user(db, email: str) -> str | None:
 
 
 def _seed_all(db, user_id: str) -> dict:
-    """Seed projects, bugs, comments, relationships, activity, notifications."""
+    """Seed projects, bugs, comments, relationships, activity, notifications.
+
+    Every table is written with a single batched insert (returning=minimal),
+    which turns hundreds of round-trips into a handful and makes the first
+    demo login dramatically faster.
+    """
     err = []
+    user_ids = [user_id] + [u["id"] for u in USERS]
 
     # Step 1: Ensure all seed users exist in auth.users and public.users
     try:
@@ -73,11 +82,11 @@ def _seed_all(db, user_id: str) -> dict:
                 })
             except Exception as e:
                 err.append(f"create_user_{u['email']}:{e}")
-        
-        try:
-            db.table("users").upsert(u, on_conflict="id").execute()
-        except Exception as e:
-            err.append(f"upsert_user_{u['email']}:{e}")
+
+    try:
+        db.table("users").upsert(USERS, on_conflict="id", returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"upsert_users:{e}")
 
     # Step 2: Delete old seeded projects (CASCADE deletes everything else)
     for p in PROJECTS:
@@ -86,64 +95,66 @@ def _seed_all(db, user_id: str) -> dict:
         except Exception as e:
             err.append(f"del_proj_{p['name']}:{e}")
 
-    # Step 3: Insert projects
-    for p in PROJECTS:
-        try:
-            db.table("projects").insert({
+    # Step 3: Insert projects (batched)
+    try:
+        db.table("projects").insert([
+            {
                 "id": p["id"],
                 "name": p["name"],
                 "description": p["description"],
                 "created_by": "a0000000-0000-0000-0000-000000000001",  # Alice
-            }).execute()
-        except Exception as e:
-            err.append(f"insert_proj_{p['name']}:{e}")
+            }
+            for p in PROJECTS
+        ], returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_projects:{e}")
 
-    # Step 4: Memberships (including demo user as ADMIN on all projects)
-    user_ids = [user_id] + [u["id"] for u in USERS]
+    # Step 4: Memberships (batched, demo user is ADMIN on all projects)
+    memberships = []
     for p in PROJECTS:
         for i, uid in enumerate(user_ids):
-            try:
-                db.table("project_members").insert({
-                    "id": _uid("member", p["id"], uid),
-                    "project_id": p["id"],
-                    "user_id": uid,
-                    "role": "ADMIN" if uid == user_id else ROLES[i % len(ROLES)],
-                }).execute()
-            except Exception as e:
-                err.append(f"mem_{uid}:{e}")
+            memberships.append({
+                "id": _uid("member", p["id"], uid),
+                "project_id": p["id"],
+                "user_id": uid,
+                "role": "ADMIN" if uid == user_id else ROLES[i % len(ROLES)],
+            })
+    try:
+        db.table("project_members").insert(memberships, returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_members:{e}")
 
-    # Step 5: Components
-    for p in PROJECTS:
-        for name in COMPONENTS_PER_PROJECT:
-            try:
-                db.table("components").insert({
-                    "id": _uid("component", p["id"], name),
-                    "project_id": p["id"],
-                    "name": name,
-                }).execute()
-            except Exception as e:
-                err.append(f"comp_{name}:{e}")
+    # Step 5: Components (batched)
+    try:
+        db.table("components").insert([
+            {"id": _uid("component", p["id"], name), "project_id": p["id"], "name": name}
+            for p in PROJECTS
+            for name in COMPONENTS_PER_PROJECT
+        ], returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_components:{e}")
 
-    # Fetch component maps
+    # Fetch component maps (one query for all projects)
     components_by_proj = {}
-    for p in PROJECTS:
-        try:
-            c_res = db.table("components").select("id, name").eq("project_id", p["id"]).execute()
-            components_by_proj[p["id"]] = c_res.data or []
-        except:
-            components_by_proj[p["id"]] = []
+    try:
+        c_res = db.table("components").select("id, project_id, name").in_(
+            "project_id", [p["id"] for p in PROJECTS]
+        ).execute()
+        for c in c_res.data or []:
+            components_by_proj.setdefault(c["project_id"], []).append(c)
+    except Exception:
+        pass
 
-    # Step 6: Bugs
+    # Step 6: Bugs (batched, per-project thematic templates)
     all_bugs = []
     n_users = len(user_ids)
-    for pi, p in enumerate(PROJECTS):
+    for p in PROJECTS:
+        tpls = PROJECT_BUG_TEMPLATES.get(p["id"], [])
         comps = components_by_proj.get(p["id"], [])
-        # Project 0 gets all bugs, others get first 15
-        blist = BUG_TEMPLATES if pi == 0 else BUG_TEMPLATES[:15]
-        for i, (title, desc, sev, pri, status, resolution) in enumerate(blist):
+        for i, (title, desc, sev, pri, status, resolution) in enumerate(tpls):
             bug_id = _uid("bug", p["id"], title)
             reporter = user_ids[i % n_users]
-            # Assingee is demo user or other users
+            # Assignee is the demo user or other users
             assignee = user_ids[(i + 1) % n_users] if i % 4 != 0 else None
             comp = comps[i % len(comps)] if comps else None
 
@@ -167,94 +178,99 @@ def _seed_all(db, user_id: str) -> dict:
             }
             if resolution:
                 bug["resolution"] = resolution
+            all_bugs.append(bug)
 
-            try:
-                db.table("bugs").insert(bug).execute()
-                all_bugs.append(bug)
-            except Exception as e:
-                err.append(f"bug_{title[:20]}:{e}")
+    try:
+        db.table("bugs").insert(all_bugs, returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_bugs:{e}")
 
-    # Step 7: Comments
+    # Step 7: Comments (batched)
     cc = 0
+    comments = []
     for bug in all_bugs[:len(all_bugs) * 2 // 3]:
         bug_hash = int(uuid.uuid5(uuid.NAMESPACE_URL, bug["id"]).hex, 16)
         comment_count = 1 + (bug_hash % 3)
         for j in range(comment_count):
             body = COMMENTS[(bug_hash + j) % len(COMMENTS)]
-            comment_id = _uid("comment", bug["id"], body)
-            try:
-                db.table("comments").insert({
-                    "id": comment_id,
-                    "bug_id": bug["id"],
-                    "author_id": user_ids[(bug_hash + j) % len(user_ids)],
-                    "body": body,
-                    "created_at": (datetime.now(timezone.utc) - timedelta(hours=6 + j * 5)).isoformat(),
-                }).execute()
-                cc += 1
-            except:
-                pass
+            comments.append({
+                "id": _uid("comment", bug["id"], body),
+                "bug_id": bug["id"],
+                "author_id": user_ids[(bug_hash + j) % n_users],
+                "body": body,
+                "created_at": (datetime.now(timezone.utc) - timedelta(hours=6 + j * 5)).isoformat(),
+            })
+            cc += 1
+    try:
+        db.table("comments").insert(comments, returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_comments:{e}")
 
-    # Step 8: Relationships
-    rc = 0
-    def _link(a, b, rtype):
-        nonlocal rc
-        try:
-            db.table("relationships").insert({
-                "id": _uid("rel", a["id"], b["id"], rtype),
-                "source_bug_id": a["id"],
-                "target_bug_id": b["id"],
-                "relationship_type": rtype,
-                "created_by": user_ids[0],
-            }).execute()
-            rc += 1
-        except:
-            pass
-
+    # Step 8: Relationships (batched)
     byp = {}
     for b in all_bugs:
         byp.setdefault(b["project_id"], []).append(b)
+
+    rc = 0
+    rels = []
     for pid, pb in byp.items():
         for i in range(min(5, len(pb) - 1)):
-            _link(pb[i], pb[i + 1], RELATIONSHIP_TYPES[i % len(RELATIONSHIP_TYPES)])
+            rtype = RELATIONSHIP_TYPES[i % len(RELATIONSHIP_TYPES)]
+            rels.append({
+                "id": _uid("rel", pb[i]["id"], pb[i + 1]["id"], rtype),
+                "source_bug_id": pb[i]["id"],
+                "target_bug_id": pb[i + 1]["id"],
+                "relationship_type": rtype,
+                "created_by": user_ids[0],
+            })
+            rc += 1
+    try:
+        db.table("relationships").insert(rels, returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_relationships:{e}")
 
-    # Step 9: Activity
+    # Step 9: Activity (batched)
     ac = 0
-    for pid in byp.keys():
-        for b in byp.get(pid, [])[:8]:
+    acts = []
+    for pid, pb in byp.items():
+        for b in pb[:8]:
             for action in ["BUG_CREATED", "BUG_STATUS_CHANGED"]:
-                try:
-                    db.table("activity_log").insert({
-                        "id": _uid("act", b["id"], action),
-                        "project_id": pid,
-                        "bug_id": b["id"],
-                        "actor_id": user_ids[int(uuid.uuid5(uuid.NAMESPACE_URL, action).hex, 16) % len(user_ids)],
-                        "action": action,
-                        "entity_type": "BUG",
-                        "entity_id": b["id"],
-                        "new_value": {"status": b["status"]} if action == "BUG_STATUS_CHANGED" else {"title": b["title"]},
-                    }).execute()
-                    ac += 1
-                except:
-                    pass
+                acts.append({
+                    "id": _uid("act", b["id"], action),
+                    "project_id": pid,
+                    "bug_id": b["id"],
+                    "actor_id": user_ids[int(uuid.uuid5(uuid.NAMESPACE_URL, action).hex, 16) % n_users],
+                    "action": action,
+                    "entity_type": "BUG",
+                    "entity_id": b["id"],
+                    "new_value": {"status": b["status"]} if action == "BUG_STATUS_CHANGED" else {"title": b["title"]},
+                })
+                ac += 1
+    try:
+        db.table("activity_log").insert(acts, returning=ReturnMethod.minimal).execute()
+    except Exception as e:
+        err.append(f"insert_activity:{e}")
 
-    # Step 10: Notifications for the demo user
+    # Step 10: Notifications for the demo user (batched)
     nc = 0
     if PROJECTS:
         demo_bugs = byp.get(PROJECTS[0]["id"], [])
+        notifs = []
         for b in demo_bugs[:5]:
-            try:
-                db.table("notifications").insert({
-                    "id": _uid("notif", user_id, b["id"]),
-                    "user_id": user_id,
-                    "project_id": PROJECTS[0]["id"],
-                    "bug_id": b["id"],
-                    "title": f"Bug assigned: {b['title'][:50]}",
-                    "message": f"You have been assigned to {b['title']}",
-                    "read": False,
-                }).execute()
-                nc += 1
-            except:
-                pass
+            notifs.append({
+                "id": _uid("notif", user_id, b["id"]),
+                "user_id": user_id,
+                "project_id": PROJECTS[0]["id"],
+                "bug_id": b["id"],
+                "title": f"Bug assigned: {b['title'][:50]}",
+                "message": f"You have been assigned to {b['title']}",
+                "read": False,
+            })
+            nc += 1
+        try:
+            db.table("notifications").insert(notifs, returning=ReturnMethod.minimal).execute()
+        except Exception as e:
+            err.append(f"insert_notifications:{e}")
 
     return {
         "projects": len(PROJECTS),
@@ -314,7 +330,7 @@ async def verify_demo():
 
     Returns the demo user's membership count plus counts of projects,
     reported bugs, assigned bugs, and activity. The frontend calls this
-    to confirm the demo actually works before redirecting.
+    FIRST so it can skip re-seeding on every login.
     """
     db = get_service_role_client()
     user_id = _find_demo_user(db, DEMO_EMAIL)
@@ -358,4 +374,3 @@ async def verify_demo():
         "activity": act_count,
         "memberships": mem_count,
     }
-
