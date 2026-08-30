@@ -73,9 +73,17 @@ def health_check():
 
 @app.get("/health/detail")
 def health_detail(request: Request):
-    """Rich health detail for ops/dashboards: version, uptime, request id."""
+    """Rich health detail for ops/dashboards: version, uptime, request id, DB status."""
+    db_status = "ok"
+    try:
+        from .supabase_client import get_service_role_client
+        db = get_service_role_client()
+        db.table("projects").select("id").limit(1).execute()
+    except Exception:
+        db_status = "degraded"
     return {
         "status": "ok",
+        "db": db_status,
         "service": app.title,
         "version": app.version,
         "uptime_seconds": round(time.time() - _START_TIME, 3),

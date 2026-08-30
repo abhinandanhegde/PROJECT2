@@ -33,6 +33,7 @@ function BugsContent() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [triageItems, setTriageItems] = useState<EnrichedTriageItem[]>([])
   const [triageLoading, setTriageLoading] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
 
   // Map bug ID → triage result for inline display in the bugs table
   const triageMap = useMemo(() => {
@@ -293,6 +294,13 @@ const visibleBugs = useMemo(() => {
         </div>
       </div>
 
+      {/* Keyboard hint */}
+      <div className="hidden md:flex items-center gap-4 text-[10px] text-stone-400 dark:text-stone-500">
+        <span><kbd className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono">J</kbd>/<kbd className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono">K</kbd> navigate</span>
+        <span><kbd className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono">Enter</kbd> open</span>
+        <span><kbd className="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono">/</kbd> search</span>
+      </div>
+
       {/* Triage Queue View (always part of the Issues page) */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="p-6 pb-2">
@@ -473,7 +481,7 @@ const visibleBugs = useMemo(() => {
                 {visibleBugs.map((bug) => {
                   const triage = triageMap.get(bug.id)
                   return (
-                    <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
+                    <tr key={bug.id} className={(selectedIndex >= 0 && visibleBugs[selectedIndex]?.id === bug.id ? 'bg-orange-50 dark:bg-orange-950/20 ring-1 ring-orange-300 dark:ring-orange-700 ' : '') + 'hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer'}>
                       <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
                         <Link href={`/bugs/${bug.id}`} className="hover:underline">{bugRef(bug)}</Link>
                       </td>
