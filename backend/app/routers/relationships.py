@@ -32,6 +32,9 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
     if not project_ids:
         return {"data": {"nodes": [], "edges": []}}
 
+    member_projects = db.table("projects").select("id, name").in_("id", project_ids).execute()
+    project_names = {p["id"]: p["name"] for p in (member_projects.data or [])}
+
     bug_res = (
         db.table("bugs")
         .select("id, title, status, severity, project_id")
@@ -78,10 +81,17 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "status": b["status"],
             "severity": b["severity"],
             "project_id": b["project_id"],
+            "project_name": project_names.get(b["project_id"], "Unknown project"),
         }
         for b in bugs
     ]
-    return {"data": {"nodes": nodes, "edges": edges}}
+    return {
+        "data": {
+            "nodes": nodes,
+            "edges": edges,
+            "projects": [{"id": pid, "name": name} for pid, name in project_names.items()],
+        }
+    }
 
 
 def _get_bug_project_id(db, bug_id: str) -> str:

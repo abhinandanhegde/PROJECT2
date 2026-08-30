@@ -10,6 +10,8 @@ interface GraphNode {
   title: string
   status: string
   severity: string
+  projectId: string
+  projectName: string
   x: number
   y: number
   vx: number
@@ -28,6 +30,7 @@ interface GraphNodePayload {
   status: string
   severity: string
   project_id: string
+  project_name: string
 }
 
 interface GraphEdgePayload {
@@ -35,6 +38,10 @@ interface GraphEdgePayload {
   target_bug_id: string
   relationship_type: string
 }
+
+// Graph is kept intentionally small: only bugs that participate in a
+// dependency, capped so the visualization stays readable at a glance.
+const MAX_NODES = 42
 
 const STATUS_COLORS: Record<string, string> = {
   NEW: '#ea580c',
@@ -52,27 +59,15 @@ const EDGE_COLORS: Record<string, string> = {
   related_to: '#94a3b8',
 }
 
-const SEVERITY_COLORS: Record<string, string> = {
-  BLOCKER: '#dc2626',
-  CRITICAL: '#ef4444',
-  MAJOR: '#f97316',
-  NORMAL: '#3b82f6',
-  MINOR: '#6b7280',
-  TRIVIAL: '#a1a1aa',
-}
-
 export default function GraphPage() {
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [edges, setEdges] = useState<GraphEdge[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
-  const [dimensions, setDimensions] = useState({ width: 900, height: 500 })
+  const [dimensions, setDimensions] = useState({ width: 900, height: 520 })
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // The container only exists once the graph has loaded, so a mount-time
-    // measurement would always miss it. Once rendered, track its width for
-    // the simulation and keep it in sync on resize.
     const el = containerRef.current
     if (!el) return
 
@@ -95,11 +90,30 @@ export default function GraphPage() {
         const graph: { nodes?: GraphNodePayload[]; edges?: GraphEdgePayload[] } =
           graphRes?.data || {}
 
-        const allNodes: GraphNode[] = (graph.nodes || []).map((b) => ({
+        const rawNodes = graph.nodes || []
+
+        // Only bugs involved in a dependency are drawn — the rest is clutter.
+        const degree = new Map<string, number>()
+        for (const e of graph.edges || []) {
+          degree.set(e.source_bug_id, (degree.get(e.source_bug_id) || 0) + 1)
+          degree.set(e.target_bug_id, (degree.get(e.target_bug_id) || 0) + 1)
+        }
+
+        let kept = rawNodes.filter((n) => (degree.get(n.id) || 0) > 0)
+        if (kept.length > MAX_NODES) {
+          kept = [...kept]
+            .sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))
+            .slice(0, MAX_NODES)
+        }
+        const keptIds = new Set(kept.map((n) => n.id))
+
+        const allNodes: GraphNode[] = kept.map((b) => ({
           id: b.id,
           title: b.title,
           status: b.status,
           severity: b.severity,
+          projectId: b.project_id,
+          projectName: b.project_name,
           x: Math.random() * 800 + 50,
           y: Math.random() * 400 + 50,
           vx: 0,
@@ -107,7 +121,12 @@ export default function GraphPage() {
         }))
 
         const allEdges: GraphEdge[] = (graph.edges || [])
-          .filter((e) => e.source_bug_id !== e.target_bug_id)
+          .filter(
+            (e) =>
+              e.source_bug_id !== e.target_bug_id &&
+              keptIds.has(e.source_bug_id) &&
+              keptIds.has(e.target_bug_id)
+          )
           .map((e) => ({
             source: e.source_bug_id,
             target: e.target_bug_id,
@@ -125,8 +144,32 @@ export default function GraphPage() {
     load()
   }, [])
 
-  // Simple force simulation — edge lookups are O(1) via index maps, and the
-  // sim stops early once the layout settles instead of a fixed frame count.
+  // Cluster centers — one per project, laid out on a simple grid so the
+  // projects read as separate, labelled groups.
+  const groupCenters = useMemo(() => {
+    const ids = Array.from(new Set(nodes.map((n) => n.projectId)))
+    if (ids.length === 0) return new Map<string, { x: number; y: number }>()
+
+    const cols = ids.length > 4 ? 3 : ids.length > 1 ? 2 : 1
+    const rows = Math.ceil(ids.length / cols)
+    const padX = Math.max(120, dimensions.width * 0.2)
+    const padY = Math.max(90, dimensions.height * 0.2)
+    const centers = new Map<string, { x: number; y: number }>()
+    ids.forEach((id, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      const x =
+        cols === 1
+          ? dimensions.width / 2
+          : padX + (col / (cols - 1)) * (dimensions.width - padX * 2)
+      const y = padY + (row / Math.max(1, rows - 1)) * (dimensions.height - padY * 2)
+      centers.set(id, { x, y })
+    })
+    return centers
+  }, [nodes, dimensions])
+
+  // Simple force simulation. Each bug is pulled toward its project's cluster,
+  // so groups stay together while edges connect the dependency pairs.
   useEffect(() => {
     if (nodes.length === 0) return
 
@@ -134,7 +177,6 @@ export default function GraphPage() {
     const currentNodes = nodes.map((n) => ({ ...n }))
     const nodeIdx = new Map(currentNodes.map((n, i) => [n.id, i]))
 
-    // Precompute edges as index pairs (O(E) once, O(E) per frame — not O(E·N))
     const edgePairs: number[][] = []
     for (const e of edges) {
       const s = nodeIdx.get(e.source)
@@ -143,8 +185,7 @@ export default function GraphPage() {
     }
 
     const { width, height } = dimensions
-    const centerX = width / 2
-    const centerY = height / 2
+    const centers = new Map<string, { x: number; y: number }>(groupCenters)
 
     let frameCount = 0
     let settledFrames = 0
@@ -154,15 +195,18 @@ export default function GraphPage() {
 
       for (let i = 0; i < currentNodes.length; i++) {
         const node = currentNodes[i]
-        node.vx += (centerX - node.x) * 0.001
-        node.vy += (centerY - node.y) * 0.001
+        const gc = centers.get(node.projectId)
+        if (gc) {
+          node.vx += (gc.x - node.x) * 0.006
+          node.vy += (gc.y - node.y) * 0.006
+        }
         for (let j = 0; j < currentNodes.length; j++) {
           if (i === j) continue
           const other = currentNodes[j]
           const dx = node.x - other.x
           const dy = node.y - other.y
           const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          const force = 2000 / (dist * dist)
+          const force = 1800 / (dist * dist)
           node.vx += (dx / dist) * force
           node.vy += (dy / dist) * force
         }
@@ -174,7 +218,7 @@ export default function GraphPage() {
         const dx = other.x - node.x
         const dy = other.y - node.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const force = (dist - 120) * 0.005
+        const force = (dist - 100) * 0.005
         node.vx += (dx / dist) * force
         node.vy += (dy / dist) * force
       }
@@ -200,14 +244,29 @@ export default function GraphPage() {
     frameId = requestAnimationFrame(runFrames)
     return () => cancelAnimationFrame(frameId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length, edges.length, dimensions])
+  }, [nodes.length, edges.length, dimensions, groupCenters])
 
   const handleNodeClick = useCallback((id: string) => {
     setSelectedNode((prev) => (prev === id ? null : id))
   }, [])
 
-  // O(1) node lookups for the render path (rebuilt per nodes tick)
+  // O(1) lookups for the render path (rebuilt per nodes tick)
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
+
+  // Live cluster centroid + project name, drawn as a label above each group
+  const projectLabels = useMemo(() => {
+    const acc = new Map<string, { x: number; y: number; n: number; name: string }>()
+    for (const n of nodes) {
+      const c = acc.get(n.projectId) || { x: 0, y: 0, n: 0, name: n.projectName }
+      c.x += n.x
+      c.y += n.y
+      c.n++
+      acc.set(n.projectId, c)
+    }
+    const out: { id: string; x: number; y: number; name: string }[] = []
+    for (const [id, c] of acc) out.push({ id, x: c.x / c.n, y: c.y / c.n, name: c.name })
+    return out
+  }, [nodes])
 
   // Filter edges connected to selected node
   const highlightedEdges = selectedNode
@@ -217,6 +276,9 @@ export default function GraphPage() {
   const connectedNodeIds = new Set(
     highlightedEdges.flatMap((e) => [e.source, e.target])
   )
+
+  const shownStatuses = Array.from(new Set(nodes.map((n) => n.status))).sort()
+  const shownProjects = new Set(nodes.map((n) => n.projectName)).size
 
   return (
     <div className="space-y-6">
@@ -232,20 +294,24 @@ export default function GraphPage() {
               Bug Dependency Graph
             </h1>
             <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
-              Interactive visualization of bug relationships — blocks, depends-on, and related issues.
+              Bug relationships at a glance — grouped by project, one dot per bug, arrows for dependencies.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-semibold text-stone-400 uppercase mr-1">Edges:</span>
             <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">blocks</div>
-            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">depends_on</div>
-            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">related_to</div>
-            <span className="text-stone-300 mx-1">|</span>
-            <span className="text-[10px] font-semibold text-stone-400 uppercase mr-1">Rings:</span>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-red-500" /><span className="text-[10px] text-stone-500">Critical</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-orange-500" /><span className="text-[10px] text-stone-500">Major</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-blue-500" /><span className="text-[10px] text-stone-500">Normal</span></div>
+            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">depends on</div>
+            <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">related</div>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          <span className="text-[10px] font-semibold text-stone-400 uppercase">Bug status:</span>
+          {shownStatuses.map((s) => (
+            <div key={s} className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: STATUS_COLORS[s] || '#6b7280' }} />
+              <span className="text-[10px] text-stone-500">{s.replace('_', ' ')}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -267,9 +333,9 @@ export default function GraphPage() {
               <line x1="18" x2="18" y1="9" y2="15" />
             </svg>
           </div>
-          <h3 className="text-base font-bold text-stone-900 dark:text-white">No bugs found</h3>
+          <h3 className="text-base font-bold text-stone-900 dark:text-white">No dependencies yet</h3>
           <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
-            Create bugs and add relationships to see the dependency graph.
+            Add relationships (blocks, depends on, related) between bugs to see the graph come to life.
           </p>
         </div>
       ) : (
@@ -280,57 +346,6 @@ export default function GraphPage() {
             className="w-full cursor-grab active:cursor-grabbing"
             viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
           >
-            {/* Edges */}
-            {highlightedEdges.map((edge, idx) => {
-              const source = nodeById.get(edge.source)
-              const target = nodeById.get(edge.target)
-              if (!source || !target) return null
-
-              const color = EDGE_COLORS[edge.type] || '#94a3b8'
-              const isHighlighted = selectedNode && (edge.source === selectedNode || edge.target === selectedNode)
-
-              // Arrow calculation
-              const dx = target.x - source.x
-              const dy = target.y - source.y
-              const dist = Math.sqrt(dx * dx + dy * dy) || 1
-              const endX = target.x - (dx / dist) * 20
-              const endY = target.y - (dy / dist) * 20
-              const startX = source.x + (dx / dist) * 20
-              const startY = source.y + (dy / dist) * 20
-
-              // Midpoint for label
-              const midX = (source.x + target.x) / 2
-              const midY = (source.y + target.y) / 2
-
-              return (
-                <g key={`${edge.source}-${edge.target}-${idx}`}>
-                  <line
-                    x1={startX}
-                    y1={startY}
-                    x2={endX}
-                    y2={endY}
-                    stroke={color}
-                    strokeWidth={isHighlighted ? 2.5 : 1.5}
-                    strokeOpacity={selectedNode ? (isHighlighted ? 1 : 0.15) : 0.6}
-                    markerEnd={`url(#arrow-${edge.type})`}
-                  />
-                  {isHighlighted && (
-                    <text
-                      x={midX}
-                      y={midY - 6}
-                      textAnchor="middle"
-                      fontSize="9"
-                      fill={color}
-                      fontWeight="600"
-                    >
-                      {edge.type.replace('_', ' ')}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-
-            {/* Arrow markers */}
             <defs>
               <marker id="arrow-blocks" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                 <path d="M0,0 L8,3 L0,6" fill="#ef4444" />
@@ -342,6 +357,61 @@ export default function GraphPage() {
                 <path d="M0,0 L8,3 L0,6" fill="#94a3b8" />
               </marker>
             </defs>
+
+            {/* Project group labels */}
+            {projectLabels.map((p) => (
+              <g key={p.id}>
+                <rect
+                  x={p.x - 90}
+                  y={p.y - 42}
+                  width={180}
+                  height={18}
+                  rx={9}
+                  fill="#f5f5f4"
+                  opacity={0.9}
+                />
+                <text
+                  x={p.x}
+                  y={p.y - 29}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fontWeight="700"
+                  fill="#57534e"
+                >
+                  {p.name}
+                </text>
+              </g>
+            ))}
+
+            {/* Edges */}
+            {highlightedEdges.map((edge, idx) => {
+              const source = nodeById.get(edge.source)
+              const target = nodeById.get(edge.target)
+              if (!source || !target) return null
+
+              const color = EDGE_COLORS[edge.type] || '#94a3b8'
+              const isHighlighted = selectedNode && (edge.source === selectedNode || edge.target === selectedNode)
+
+              const dx = target.x - source.x
+              const dy = target.y - source.y
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1
+              const endX = target.x - (dx / dist) * 14
+              const endY = target.y - (dy / dist) * 14
+
+              return (
+                <line
+                  key={`${edge.source}-${edge.target}-${idx}`}
+                  x1={source.x}
+                  y1={source.y}
+                  x2={endX}
+                  y2={endY}
+                  stroke={color}
+                  strokeWidth={isHighlighted ? 2.5 : 1.5}
+                  strokeOpacity={selectedNode ? (isHighlighted ? 1 : 0.15) : 0.6}
+                  markerEnd={`url(#arrow-${edge.type})`}
+                />
+              )
+            })}
 
             {/* Nodes */}
             {nodes.map((node) => {
@@ -357,31 +427,19 @@ export default function GraphPage() {
                   className="cursor-pointer"
                   style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
                 >
-                  {/* Glow for selected */}
+                  <title>{`${shortBugId(node.id)} — ${node.title}`}</title>
                   {isSelected && (
-                    <circle cx={node.x} cy={node.y} r={24} fill={color} opacity={0.15} />
+                    <circle cx={node.x} cy={node.y} r={20} fill={color} opacity={0.15} />
                   )}
-                  {/* Severity ring */}
                   <circle
                     cx={node.x}
                     cy={node.y}
-                    r={isSelected ? 22 : 18}
-                    fill="none"
-                    stroke={SEVERITY_COLORS[node.severity] || '#6b7280'}
-                    strokeWidth={isSelected ? 2.5 : 2}
-                    strokeOpacity={isDimmed ? 0.15 : 0.7}
-                  />
-                  {/* Status circle */}
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={isSelected ? 18 : 14}
+                    r={isSelected ? 15 : 12}
                     fill={color}
-                    stroke={isSelected ? '#fff' : 'transparent'}
-                    strokeWidth={isSelected ? 3 : 0}
+                    stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.6)'}
+                    strokeWidth={isSelected ? 2.5 : 1.5}
                     style={{ transition: 'r 0.2s, stroke 0.2s' }}
                   />
-                  {/* Node label */}
                   <text
                     x={node.x}
                     y={node.y + 1}
@@ -393,17 +451,6 @@ export default function GraphPage() {
                     style={{ pointerEvents: 'none' }}
                   >
                     {shortBugId(node.id)}
-                  </text>
-                  {/* Title below */}
-                  <text
-                    x={node.x}
-                    y={node.y + (isSelected ? 30 : 26)}
-                    textAnchor="middle"
-                    fontSize="8"
-                    fill="#6b7280"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {node.title.length > 20 ? node.title.slice(0, 20) + '...' : node.title}
                   </text>
                 </g>
               )
@@ -428,7 +475,7 @@ export default function GraphPage() {
                       <span className="text-xs text-stone-600 dark:text-stone-300 font-medium">{node.title}</span>
                     </div>
                     <div className="text-xs text-stone-400 mt-1">
-                      Status: {node.status} • Severity: {node.severity} • {connectedEdges.length} relationship{connectedEdges.length !== 1 ? 's' : ''}
+                      Project: {node.projectName} • Status: {node.status} • {connectedEdges.length} relationship{connectedEdges.length !== 1 ? 's' : ''}
                     </div>
                   </div>
                   <Link
@@ -449,7 +496,7 @@ export default function GraphPage() {
                           onClick={() => handleNodeClick(otherId)}
                           className="px-2 py-1 rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-medium text-stone-700 dark:text-stone-300 hover:border-orange-500 transition-colors"
                         >
-                          {direction} {shortBugId(otherId)} ({e.type})
+                          {direction} {shortBugId(otherId)} ({e.type.replace('_', ' ')})
                         </button>
                       )
                     })}
@@ -463,24 +510,29 @@ export default function GraphPage() {
 
       {/* Stats bar */}
       {nodes.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
-            <div className="text-2xl font-bold text-stone-900 dark:text-white">{nodes.length}</div>
-            <div className="text-xs text-stone-500 mt-1">Bug Nodes</div>
+        <>
+          <p className="text-xs text-stone-500 dark:text-stone-400">
+            Showing {nodes.length} bugs with dependencies across {shownProjects} project{shownProjects !== 1 ? 's' : ''} — bugs without relationships are hidden to keep the view simple.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
+              <div className="text-2xl font-bold text-stone-900 dark:text-white">{nodes.length}</div>
+              <div className="text-xs text-stone-500 mt-1">Connected Bugs</div>
+            </div>
+            <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
+              <div className="text-2xl font-bold text-stone-900 dark:text-white">{edges.length}</div>
+              <div className="text-xs text-stone-500 mt-1">Relationships</div>
+            </div>
+            <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
+              <div className="text-2xl font-bold text-red-500">{edges.filter((e) => e.type === 'blocks').length}</div>
+              <div className="text-xs text-stone-500 mt-1">Blocking</div>
+            </div>
+            <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
+              <div className="text-2xl font-bold text-amber-500">{edges.filter((e) => e.type === 'depends_on').length}</div>
+              <div className="text-xs text-stone-500 mt-1">Dependencies</div>
+            </div>
           </div>
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
-            <div className="text-2xl font-bold text-stone-900 dark:text-white">{edges.length}</div>
-            <div className="text-xs text-stone-500 mt-1">Relationships</div>
-          </div>
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
-            <div className="text-2xl font-bold text-red-500">{edges.filter((e) => e.type === 'blocks').length}</div>
-            <div className="text-xs text-stone-500 mt-1">Blocking</div>
-          </div>
-          <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 text-center">
-            <div className="text-2xl font-bold text-amber-500">{edges.filter((e) => e.type === 'depends_on').length}</div>
-            <div className="text-xs text-stone-500 mt-1">Dependencies</div>
-          </div>
-        </div>
+        </>
       )}
     </div>
   )
