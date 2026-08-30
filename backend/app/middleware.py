@@ -1,16 +1,21 @@
 """
-T2 Bug Tracker — Security Middleware
+T2 Bug Tracker — Security & Logging Middleware
 
 Provides:
 1. Security headers middleware (X-Content-Type-Options, X-Frame-Options, etc.)
 2. Request ID middleware (adds X-Request-ID to every response)
+3. Access log middleware (structured JSON request logging)
 """
 
+import json
+import logging
+import time
 import uuid
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+logger = logging.getLogger("app.access")
 
 # ============================================================
 # Security Headers Middleware
@@ -73,19 +78,80 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 # ============================================================
+# Access Log Middleware
+# ============================================================
+
+
+class AccessLogMiddleware(BaseHTTPMiddleware):
+    """
+    Structured JSON access logging for every request.
+
+    Emits one JSON object per request:
+      {"level":"REQUEST","ts":...,"request_id":...,"method":...,"path":...,
+       "status":...,"duration_ms":...,"remote_addr":...}
+    """
+
+    async def dispatch(self: "AccessLogMiddleware", request: Request, call_next):
+        start_ns = time.perf_counter_ns()
+
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            # Log the failure so structured logging still captures it
+            try:
+                status_code = 500
+                logger.info(
+                    json.dumps(
+                        {
+                            "level": "REQUEST",
+                            "ts": time.time(),
+                            "request_id": getattr(request.state, "request_id", None),
+                            "method": request.method,
+                            "path": request.url.path,
+                            "status": status_code,
+                            "duration_ms": round(
+                                (time.perf_counter_ns() - start_ns) / 1_000_000, 3
+                            ),
+                            "remote_addr": request.client.host if request.client else None,
+                            "error": "unhandled",
+                        }
+                    )
+                )
+            except Exception:
+                pass
+            raise
+
+        duration_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000, 3)
+        log_entry = {
+            "level": "REQUEST",
+            "ts": time.time(),
+            "request_id": getattr(request.state, "request_id", None),
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "remote_addr": request.client.host if request.client else None,
+        }
+        logger.info(json.dumps(log_entry, default=str))
+
+        return response
+
+
+# ============================================================
 # Middleware Registration Helper
 # ============================================================
 
 
 def register_middleware(app):
     """
-    Register all security middleware on the FastAPI app.
+    Register all middleware on the FastAPI app.
 
     Call this in main.py:
         from .middleware import register_middleware
         register_middleware(app)
     """
     # Order matters: RequestID first (so other middleware can use it),
-    # then SecurityHeaders
+    # then AccessLog, then SecurityHeaders
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(AccessLogMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)

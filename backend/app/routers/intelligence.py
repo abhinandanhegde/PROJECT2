@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends
 from app.dependencies import get_current_user_with_client
 from app.exceptions import NotFoundError, ValidationError
 from app.helpers import require_project_role
+from app.ratelimit import rate_limit_intelligence
 from app.models.intelligence import (
     DuplicateCandidate,
     DuplicateRequest,
@@ -179,6 +180,7 @@ async def triage_bug(
     project_id: str,
     body: TriageRequest,
     auth=Depends(get_current_user_with_client),
+    _rl: bool = Depends(rate_limit_intelligence),
 ):
     db, user = auth["db"], auth["user"]
     require_project_role(db, project_id, user["id"])
@@ -314,6 +316,7 @@ async def detect_duplicates(
     project_id: str,
     body: DuplicateRequest,
     auth=Depends(get_current_user_with_client),
+    _rl: bool = Depends(rate_limit_intelligence),
 ):
     db, user = auth["db"], auth["user"]
     require_project_role(db, project_id, user["id"])
@@ -439,6 +442,7 @@ async def analyze_risk(
     project_id: str,
     body: RiskRequest,
     auth=Depends(get_current_user_with_client),
+    _rl: bool = Depends(rate_limit_intelligence),
 ):
     db, user = auth["db"], auth["user"]
     require_project_role(db, project_id, user["id"])

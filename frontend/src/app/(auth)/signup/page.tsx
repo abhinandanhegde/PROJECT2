@@ -42,9 +42,9 @@ export default function SignupPage() {
     setLoading(true)
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    const demoEmail = 'demo@bugflow.app'
-    const demoPassword = 'Demo1234!'
-    const demoName = 'Demo User'
+    const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugflow.app'
+    const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo1234!'
+    const demoName = process.env.NEXT_PUBLIC_DEMO_NAME || 'Demo User'
 
     // Step 1: Call backend to create user + seed data
     try {
@@ -58,12 +58,24 @@ export default function SignupPage() {
         }),
       })
 
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const err = await res.text()
-        console.error('Demo setup failed:', err)
+        setError(`Demo setup failed: ${data.detail || 'Unknown error'}. Make sure backend is running.`)
+        setLoading(false)
+        return
+      }
+
+      // Confirm data actually landed before signing in.
+      if (typeof data.bugs === 'number' && data.bugs === 0) {
+        setError('Demo data did not seed successfully. Try again in a moment.')
+        setLoading(false)
+        return
       }
     } catch (e) {
       console.error('Demo setup network error:', e)
+      setError('Cannot reach backend. Make sure uvicorn is running on port 8000.')
+      setLoading(false)
+      return
     }
 
     // Step 2: Sign in

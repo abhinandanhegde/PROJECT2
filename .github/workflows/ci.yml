@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
@@ -61,3 +65,8 @@ jobs:
           set -euo pipefail
           cd backend
           python -m pytest tests/ -v --tb=short
+      # Seed dry-run validates seed_data + determinism without touching Supabase
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seed.py --dry-run | tail -n 5

@@ -110,6 +110,23 @@ T2/
 - Python ≥ 3.10
 - Supabase account ([free tier works](https://supabase.com))
 
+### 0. One-command setup
+
+```bash
+# Interactive (prompts for Supabase values)
+bash scripts/setup.sh
+
+# Or non-interactive
+T2_SUPABASE_URL=https://xxx.supabase.co \
+T2_SUPABASE_ANON_KEY=your-anon-key \
+T2_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
+bash scripts/setup.sh --yes
+```
+
+This creates `backend/.env` + `frontend/.env.local`, installs backend + frontend
+dependencies, and validates the seed data (`seed.py --dry-run`). Pre-existing
+`.env` files are never overwritten.
+
 ### 1. Database Setup
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**
@@ -165,8 +182,9 @@ npm run dev
 
 ```bash
 cd backend
-python -m scripts.seed
-# Creates: 5 users, 3 projects, 42 bugs, comments, relationships, activity
+python -m scripts.seed            # normal seed (idempotent)
+python -m scripts.seed --dry-run  # preview without writing
+# Creates: 8 users, 4 projects, 116 bugs, comments, relationships, activity
 ```
 
 ## API Endpoints
@@ -204,6 +222,10 @@ python -m scripts.seed
 | `GET` | `/api/projects/{id}/components` | List components |
 | `GET` | `/api/dashboard/stats` | Dashboard statistics |
 | `GET` | `/api/dashboard/recent` | Recent activity |
+| `POST` | `/api/demo/setup` | One-click demo (creates user + seeds data) |
+| `GET` | `/api/demo/verify` | Check demo account is seeded (counts) |
+| `GET` | `/health` | Simple health check |
+| `GET` | `/health/detail` | Rich health (version, uptime, request id) |
 
 Full interactive docs at `http://localhost:8000/docs`.
 
@@ -227,6 +249,8 @@ Browser → Supabase Auth (signup/login) → JWT access token
 | **Service-Role Isolation** | Service-role client ONLY for admin ops — never for user requests |
 | **Security Headers** | X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store |
 | **Request IDs** | Every request gets unique X-Request-ID for tracing |
+| **Structured Logging** | Every request logged as JSON (method, path, status, duration, request_id) |
+| **Rate Limiting** | Per-user sliding window (30/min) on intelligence endpoints → HTTP 429 |
 | **Audit Trail** | SECURITY DEFINER function validates actor_id = auth.uid() |
 | **Input Validation** | Pydantic v2 schemas on all endpoints |
 
@@ -328,12 +352,12 @@ Response:
 
 ## Testing
 
-### Backend Tests — 51 tests, all passing
+### Backend Tests — 62 tests, all passing
 
 ```bash
 cd backend
-pytest tests/test_comprehensive.py -v
-# Output: 51 passed in 6.08s
+pytest tests -v
+# Output: 62 passed
 ```
 
 | Category | Tests | What It Proves |
@@ -348,6 +372,8 @@ pytest tests/test_comprehensive.py -v
 | Frontend Types | 3 | Backend enums match frontend TypeScript |
 | Supabase Client | 2 | Env validation, error handling |
 | App/Middleware | 4 | FastAPI loads, middleware imports |
+| RLS Integration (route-level) | 7 | Membership required, role hierarchy, triage/duplicate/risk contracts |
+| Rate Limiting / Health | 4 | 429 on budget overflow, 200 under budget, health detail shape |
 
 **Full test documentation:** [docs/TESTS.md](docs/TESTS.md)
 

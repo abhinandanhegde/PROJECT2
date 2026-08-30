@@ -1,18 +1,28 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 import os
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Structured request logging (JSON lines to stderr). Enabled by default so
+# access logs always surface; tune the numeric level in production via env.
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(message)s")
+logger = logging.getLogger(__name__)
+
 from .exceptions import register_exception_handlers
 from .middleware import register_middleware
+from .ratelimit import RateLimitError, rate_limit_error_handler
 
 app = FastAPI(
     title="T2 Bug Tracker API",
     description="Backend API for the T2 Bug Tracker",
     version="0.1.0",
 )
+
+app.add_exception_handler(RateLimitError, rate_limit_error_handler)
 
 # ============================================================
 # CORS configuration
@@ -52,9 +62,24 @@ register_exception_handlers(app)
 # ============================================================
 
 
+_START_TIME = time.time()
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/health/detail")
+def health_detail(request: Request):
+    """Rich health detail for ops/dashboards: version, uptime, request id."""
+    return {
+        "status": "ok",
+        "service": app.title,
+        "version": app.version,
+        "uptime_seconds": round(time.time() - _START_TIME, 3),
+        "request_id": getattr(request.state, "request_id", None),
+    }
 
 
 # ============================================================

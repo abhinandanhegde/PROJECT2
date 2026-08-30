@@ -2,6 +2,7 @@
 Demo Router — Bulletproof one-click demo.
 Handles every edge case: user exists, user doesn't exist, partial seed, etc.
 """
+import os
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
@@ -13,9 +14,10 @@ from app.supabase_client import get_service_role_client
 router = APIRouter(prefix="/api/demo", tags=["demo"])
 logger = logging.getLogger(__name__)
 
-DEMO_EMAIL = "demo@bugflow.app"
-DEMO_PASS = "Demo1234!"
-DEMO_NAME = "Demo User"
+# Overridable in backend/.env (DEMO_EMAIL, DEMO_PASSWORD, DEMO_NAME)
+DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@bugflow.app")
+DEMO_PASS = os.getenv("DEMO_PASSWORD", "Demo1234!")
+DEMO_NAME = os.getenv("DEMO_NAME", "Demo User")
 
 
 class DemoSetupRequest(BaseModel):
@@ -303,4 +305,57 @@ async def setup_demo_account(body: DemoSetupRequest):
     result = _seed_all(db, user_id)
     return {"status": "seeded", "user_id": user_id, **result,
             "message": f"Demo ready: {result.get('bugs', 0)} bugs across {result.get('projects', 0)} projects"}
+
+
+@router.get("/verify")
+async def verify_demo():
+    """
+    Read-only check of whether the demo account is fully seeded.
+
+    Returns the demo user's membership count plus counts of projects,
+    reported bugs, assigned bugs, and activity. The frontend calls this
+    to confirm the demo actually works before redirecting.
+    """
+    db = get_service_role_client()
+    user_id = _find_demo_user(db, DEMO_EMAIL)
+
+    if not user_id:
+        return {
+            "status": "missing",
+            "ready": False,
+            "user_id": None,
+            "projects": 0,
+            "reported_bugs": 0,
+            "assigned_bugs": 0,
+            "activity": 0,
+            "memberships": 0,
+        }
+
+    try:
+        memberships = db.table("project_members").select("*").eq("user_id", user_id).execute()
+        reported = db.table("bugs").select("id").eq("reporter_id", user_id).execute()
+        assigned = db.table("bugs").select("id").eq("assignee_id", user_id).execute()
+        activity = db.table("activity_log").select("id").eq("actor_id", user_id).execute()
+        projects = db.table("projects").select("id").execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cannot verify demo data: {e}")
+
+    mem_count = len(memberships.data or [])
+    rep_count = len(reported.data or [])
+    assigned_count = len(assigned.data or [])
+    act_count = len(activity.data or [])
+    proj_count = len(projects.data or [])
+
+    ready = proj_count > 0 and rep_count > 0 and assigned_count > 0
+
+    return {
+        "status": "ready" if ready else "incomplete",
+        "ready": ready,
+        "user_id": user_id,
+        "projects": proj_count,
+        "reported_bugs": rep_count,
+        "assigned_bugs": assigned_count,
+        "activity": act_count,
+        "memberships": mem_count,
+    }
 
