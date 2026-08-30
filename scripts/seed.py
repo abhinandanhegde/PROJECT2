@@ -66,7 +66,7 @@ def _hours_ago(h: float) -> str:
 
 from backend.app.seed_data import (
     USERS, PROJECTS, ROLES, COMPONENTS_PER_PROJECT,
-    BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES, ACTIVITY_ACTIONS
+    PROJECT_BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES, ACTIVITY_ACTIONS
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -154,10 +154,11 @@ def seed_components(db, project_id: str) -> list[dict]:
 
 def seed_bugs(db, project_id: str, user_ids: list[str], components: list[dict]) -> list[dict]:
     """Insert one bug per template, spread across components/users/time."""
-    _log(f"  Seeding {len(BUG_TEMPLATES)} bugs …")
+    templates = PROJECT_BUG_TEMPLATES.get(project_id, [])
+    _log(f"  Seeding {len(templates)} bugs …")
     created = []
     n = len(user_ids)
-    for i, (title, desc, sev, pri, status, resolution) in enumerate(BUG_TEMPLATES):
+    for i, (title, desc, sev, pri, status, resolution) in enumerate(templates):
         bug_id = _uid("bug", project_id, title)
         reporter = user_ids[i % n]
         # Every 4th bug stays unassigned (feeds the triage queue / unassigned stats)
@@ -340,7 +341,7 @@ def main():
             seed_relationships(db, all_bugs[k - 1 : k + 1], user_ids)
 
     print(f"\n{'═' * 60}")
-    bugs_done = len(all_bugs) if not DRY_RUN else len(PROJECTS) * len(BUG_TEMPLATES)
+    bugs_done = len(all_bugs) if not DRY_RUN else sum(len(tpls) for tpls in PROJECT_BUG_TEMPLATES.values())
     print(f"  Done — {len(USERS)} users, {len(projects) if projects else len(PROJECTS)} projects, {bugs_done} bugs")
     print(f"{'═' * 60}\n")
 
