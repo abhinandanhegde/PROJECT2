@@ -330,6 +330,15 @@ export default function GraphPage() {
     setSelectedNode((prev) => (prev === id ? null : id))
   }, [])
 
+  // Keyboard: Escape to deselect
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedNode(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   // O(1) lookups for the render path (rebuilt per nodes tick)
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
 
@@ -392,7 +401,14 @@ const projectLabels = useMemo(() => {
             <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">related</div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 mt-3">
+        <div className="flex items-center gap-4 mt-3 text-[11px] text-stone-500 dark:text-stone-400">
+          <span>Click a bug to inspect its dependency chain</span>
+          <span className="text-stone-300 dark:text-stone-600">|</span>
+          <span>Highlighted links show what it depends on and what depends on it</span>
+          <span className="text-stone-300 dark:text-stone-600">|</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono text-[10px]">Esc</kbd> to deselect</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 mt-2">
           <span className="text-[10px] font-semibold text-stone-400 uppercase">Bug status:</span>
           {shownStatuses.map((s) => (
             <div key={s} className="flex items-center gap-1">
@@ -534,7 +550,11 @@ const projectLabels = useMemo(() => {
                 <g
                   key={node.id}
                   onClick={() => handleNodeClick(node.id)}
-                  className="cursor-pointer"
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNodeClick(node.id) } }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={bugRef(node) + ' — ' + node.title + '. Click to inspect dependencies.'}
+                  className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 rounded"
                   style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
                 >
                   <title>{`${bugRef(node)} - ${node.title} (${node.status.replace('_', ' ')})${impact ? ` - ${impact}` : ''}`}</title>
@@ -592,12 +612,21 @@ const projectLabels = useMemo(() => {
                       Project: {node.projectName} • Status: {node.status} • {connectedEdges.length} relationship{connectedEdges.length !== 1 ? 's' : ''}
                     </div>
                   </div>
-                  <Link
-                    href={`/bugs/${node.id}`}
-                    className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold transition-colors"
-                  >
-                    View Bug →
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedNode(null)}
+                      className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 text-xs transition-colors"
+                      title="Close (Esc)"
+                    >
+                      ✕
+                    </button>
+                    <Link
+                      href={`/bugs/${node.id}`}
+                      className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold transition-colors"
+                    >
+                      View Bug →
+                    </Link>
+                  </div>
                 </div>
                 {(node.unblockedCount > 0 || node.blockedByCount > 0) && (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">

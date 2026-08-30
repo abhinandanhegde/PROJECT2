@@ -66,25 +66,27 @@ export default function IntelligencePage() {
         return
       }
 
-      // Run ALL intelligence in parallel — triage + duplicates + risk for top 8 bugs
-      const topBugs = bugs.slice(0, 8)
+      // Run ALL intelligence in parallel — triage + duplicates + risk for top 5 bugs
+      const topBugs = bugs.slice(0, 5)
 
-      // Batch triage calls first, then duplicates, then risk — avoid rate limit spikes
-      const triageResults = await Promise.allSettled(
-        topBugs.map((b) =>
-          api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
-        )
-      )
-      const dupResults = await Promise.allSettled(
-        topBugs.map((b) =>
-          api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
-        )
-      )
-      const riskResults = await Promise.allSettled(
-        topBugs.map((b) =>
-          api.analyzeRisk(projectId, b.id)
-        )
-      )
+      // Fire all 15 calls simultaneously (5 triage + 5 dups + 5 risk)
+      const [triageResults, dupResults, riskResults] = await Promise.all([
+        Promise.allSettled(
+          topBugs.map((b) =>
+            api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
+          )
+        ),
+        Promise.allSettled(
+          topBugs.map((b) =>
+            api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
+          )
+        ),
+        Promise.allSettled(
+          topBugs.map((b) =>
+            api.analyzeRisk(projectId, b.id)
+          )
+        ),
+      ])
 
       const triageMap = new Map<string, TriageResult>()
       const dupMap = new Map<string, DuplicateResult>()
