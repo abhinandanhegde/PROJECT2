@@ -347,7 +347,7 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
-            <Link href="/analytics" className="text-xs text-orange-600 dark:text-orange-400 hover:underline font-medium">
+            <Link href="/bugs?status=NEW" className="text-xs text-orange-600 dark:text-orange-400 hover:underline font-medium">
               View all →
             </Link>
           </div>
@@ -439,7 +439,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-3 text-center">
-            <Link href="/analytics" className="text-xs text-orange-600 dark:text-orange-400 hover:underline font-medium">
+            <Link href="/bugs?status=NEW" className="text-xs text-orange-600 dark:text-orange-400 hover:underline font-medium">
               View full triage queue →
             </Link>
           </div>

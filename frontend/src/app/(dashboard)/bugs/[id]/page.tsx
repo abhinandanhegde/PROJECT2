@@ -66,6 +66,7 @@ export default function BugDetailPage({
   const [loading, setLoading] = useState(true)
   const [commentLoading, setCommentLoading] = useState(false)
   const [riskData, setRiskData] = useState<RiskResult | null>(null)
+  const [duplicates, setDuplicates] = useState<{ bug_id: string; title: string; similarity: number; status: string }[]>([])
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false)
   const [selectedResolution, setSelectedResolution] = useState<BugResolution>('FIXED')
   const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments')
@@ -159,10 +160,16 @@ export default function BugDetailPage({
         const currentBug = bugRes || fallbackBug
         setBug(currentBug)
 
-        // Load comments, activity, and risk in parallel
-        const [commentsRes, activityRes] = await Promise.allSettled([
+        // Load comments, activity, duplicates, and risk in parallel
+        const [commentsRes, activityRes, dupesRes] = await Promise.allSettled([
           api.getComments(id),
           api.getBugActivity(id),
+          api.findDuplicates(currentBug.project_id, {
+            title: currentBug.title,
+            description: currentBug.description,
+            threshold: 0.3,
+            limit: 5,
+          }),
         ])
 
         setComments(
@@ -171,6 +178,10 @@ export default function BugDetailPage({
         setActivityLog(
           activityRes.status === 'fulfilled' ? activityRes.value?.data || fallbackActivity : fallbackActivity
         )
+        if (dupesRes.status === 'fulfilled') {
+          const cands = (dupesRes.value as { candidates?: { bug_id: string; title: string; similarity: number; status: string }[] })?.candidates || []
+          setDuplicates(cands.filter((c) => c.bug_id !== id))
+        }
 
         // Load risk analysis
         api
@@ -434,6 +445,38 @@ export default function BugDetailPage({
                   {f.score} / {f.weight} pts
                 </div>
                 <div className="text-xs text-stone-500 mt-0.5">{f.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Detection */}
+      {duplicates.length > 0 && (
+        <div className="bg-white dark:bg-stone-900 p-6 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-500">🔍</span>
+            <h2 className="font-bold text-sm text-stone-900 dark:text-white">
+              Potential Duplicates Found
+            </h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+              {duplicates.length} candidate{duplicates.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {duplicates.map((d) => (
+              <div key={d.bug_id} className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-stone-800/40 border border-stone-100 dark:border-stone-800">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-bold text-stone-900 dark:text-white">{d.title}</span>
+                  <span className="ml-2 text-[10px] text-stone-400">{d.status.replace('_', ' ')}</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold shrink-0 ml-2 ${
+                  d.similarity >= 0.7 ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400' :
+                  d.similarity >= 0.5 ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400' :
+                  'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                }`}>
+                  {Math.round(d.similarity * 100)}% match
+                </span>
               </div>
             ))}
           </div>
