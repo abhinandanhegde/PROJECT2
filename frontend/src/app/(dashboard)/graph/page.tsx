@@ -209,6 +209,7 @@ export default function GraphPage() {
   const [criticalPath, setCriticalPath] = useState<CriticalPathNode[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [hasInteracted, setHasInteracted] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 900, height: 520 })
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -328,6 +329,7 @@ export default function GraphPage() {
 
   const handleNodeClick = useCallback((id: string) => {
     setSelectedNode((prev) => (prev === id ? null : id))
+    setHasInteracted(true)
   }, [])
 
   // Keyboard: Escape to deselect
@@ -338,6 +340,21 @@ export default function GraphPage() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // First-use pulse: briefly highlight a node to show interactivity
+  useEffect(() => {
+    if (nodes.length === 0 || hasInteracted) return
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReduced) return
+    const timer = setTimeout(() => {
+      // Find a node with relationships (most interesting to click)
+      const interesting = nodes.find((n) => n.unblockedCount > 0 || n.blockedByCount > 0)
+      if (interesting) setSelectedNode(interesting.id)
+      const clearTimer = setTimeout(() => setSelectedNode(null), 2000)
+      return () => clearTimeout(clearTimer)
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [nodes, hasInteracted])
 
   // O(1) lookups for the render path (rebuilt per nodes tick)
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes])
@@ -401,12 +418,14 @@ const projectLabels = useMemo(() => {
             <div className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-700 border border-stone-200">related</div>
           </div>
         </div>
-        <div className="flex items-center gap-4 mt-3 text-[11px] text-stone-500 dark:text-stone-400">
-          <span>Click a bug to inspect its dependency chain</span>
-          <span className="text-stone-300 dark:text-stone-600">|</span>
-          <span>Highlighted links show what it depends on and what depends on it</span>
-          <span className="text-stone-300 dark:text-stone-600">|</span>
-          <span><kbd className="px-1 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono text-[10px]">Esc</kbd> to deselect</span>
+        <div className="mt-3 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border border-orange-200/60 dark:border-orange-900/40">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🔗</span>
+            <span className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider">Explore the Graph</span>
+          </div>
+          <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-0.5 ml-6">
+            Click any bug circle to inspect its dependency impact — see what it blocks and what blocks it
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-2">
           <span className="text-[10px] font-semibold text-stone-400 uppercase">Bug status:</span>
@@ -569,7 +588,8 @@ const projectLabels = useMemo(() => {
                     stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.85)'}
                     strokeWidth={isSelected ? 2.75 : 1.75}
                     filter="url(#node-shadow)"
-                    style={{ transition: 'r 0.2s, stroke 0.2s' }}
+                    style={{ transition: 'r 0.2s, stroke 0.2s, stroke-width 0.15s' }}
+                    className="hover:stroke-orange-300 hover:stroke-[3px]"
                   />
                   <text
                     x={node.x}
@@ -600,6 +620,11 @@ const projectLabels = useMemo(() => {
             )
             return (
               <div className="p-4 border-t border-stone-100 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider">Dependency Impact</span>
+                  <kbd className="px-1 py-0.5 rounded bg-stone-100 dark:bg-stone-800 font-mono text-[9px] text-stone-400">Esc</kbd>
+                  <span className="text-[9px] text-stone-400">to close</span>
+                </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
@@ -642,23 +667,63 @@ const projectLabels = useMemo(() => {
                     )}
                   </div>
                 )}
-                {connectedEdges.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {connectedEdges.map((e) => {
-                      const otherId = e.source === selectedNode ? e.target : e.source
-                      const direction = e.source === selectedNode ? '→' : '←'
-                      return (
-                        <button
-                          key={`${e.source}-${e.target}-${e.type}`}
-                          onClick={() => handleNodeClick(otherId)}
-                          className="px-2 py-1 rounded-lg bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-xs font-medium text-stone-700 dark:text-stone-300 hover:border-orange-500 transition-colors"
-                        >
-                          {direction} {bugRef(nodeById.get(otherId) ?? { id: otherId })} ({e.type.replace('_', ' ')})
-                        </button>
-                      )
-                    })}
+                {connectedEdges.length > 0 && (() => {
+                  const dependsOn = connectedEdges.filter((e) => e.target === selectedNode && e.type === 'blocks')
+                  const blocks = connectedEdges.filter((e) => e.source === selectedNode && e.type === 'blocks')
+                  const related = connectedEdges.filter((e) => e.type !== 'blocks')
+                  return (
+                  <div className="mt-2 space-y-1.5">
+                    {blocks.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">Blocks ({blocks.length})</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {blocks.map((e) => {
+                            const otherId = e.target
+                            return (
+                              <button key={e.source+e.target} onClick={() => handleNodeClick(otherId)}
+                                className="px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-[10px] font-medium text-red-700 dark:text-red-300 hover:border-red-400 transition-colors">
+                                → {bugRef(nodeById.get(otherId) ?? { id: otherId })}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {dependsOn.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-1">Depends On ({dependsOn.length})</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {dependsOn.map((e) => {
+                            const otherId = e.source
+                            return (
+                              <button key={e.source+e.target} onClick={() => handleNodeClick(otherId)}
+                                className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-[10px] font-medium text-amber-700 dark:text-amber-300 hover:border-amber-400 transition-colors">
+                                ← {bugRef(nodeById.get(otherId) ?? { id: otherId })}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {related.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-1">Related ({related.length})</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {related.map((e) => {
+                            const otherId = e.source === selectedNode ? e.target : e.source
+                            return (
+                              <button key={e.source+e.target} onClick={() => handleNodeClick(otherId)}
+                                className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-[10px] font-medium text-stone-600 dark:text-stone-400 hover:border-stone-400 transition-colors">
+                                • {bugRef(nodeById.get(otherId) ?? { id: otherId })}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })()}

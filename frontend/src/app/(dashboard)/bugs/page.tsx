@@ -129,6 +129,8 @@ function BugsContent() {
     loadData()
   }, [loadData])
 
+
+
 const visibleBugs = useMemo(() => {
     let filtered = bugs
     if (tabParam === 'assigned' && currentUserId) {
@@ -138,6 +140,26 @@ const visibleBugs = useMemo(() => {
     }
     return filtered
   }, [bugs, tabParam, currentUserId])
+
+  // Keyboard shortcuts: J/K navigate, Enter opens
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      if (e.key === 'j' || e.key === 'J') {
+        e.preventDefault()
+        setSelectedIndex((prev) => Math.min(prev + 1, visibleBugs.length - 1))
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault()
+        setSelectedIndex((prev) => Math.max(prev - 1, 0))
+      } else if (e.key === 'Enter' && selectedIndex >= 0 && visibleBugs[selectedIndex]) {
+        router.push('/bugs/' + visibleBugs[selectedIndex].id)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [visibleBugs, selectedIndex, router])
+
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString())
