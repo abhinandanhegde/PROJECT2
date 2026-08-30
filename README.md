@@ -489,6 +489,24 @@ Pre-seeded with73 bugs across4 projects, relationships, comments, and activity.
 
 ---
 
+## Under the Hood
+
+Features that work but aren't obvious from the landing page:
+
+| Feature | What It Does |
+|---------|-------------|
+| **Comments** | Threaded discussion on every bug — create, edit, delete with author tracking |
+| **Activity Timeline** | Every mutation logged: who did what, when, old → new value. Visible on bug detail pages |
+| **Risk Factor Breakdown** | Each risk score shows exactly why: severity(16.2/25), priority(12/15), age(2.5/15), etc. |
+| **Search** | Global full-text search across all projects with filter, sort, pagination |
+| **Keyboard Shortcuts** | J/K navigate bugs, Enter opens, / focuses search, Esc deselects graph nodes |
+| **Project Management** | Create projects, invite members, assign roles — full team workflow |
+| **Component Tracking** | Categorize bugs by component, view component health in reports |
+| **Relationships** | Link bugs as blocks/depends_on/related_to — drives the dependency graph |
+| **User Roles** | 4-tier RBAC with real enforcement — REPORTER can't reassign, only ADMIN can manage members |
+
+---
+
 ## What I'd Improve With More Time
 
 | Improvement | Why |
