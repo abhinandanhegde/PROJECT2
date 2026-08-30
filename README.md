@@ -29,7 +29,7 @@ Every mark maps to a specific, verifiable implementation. Click any link to see 
 | ✅ Keyword triage with confidence | Not just "suggest severity" — explains WHY with a confidence score (0.0–1.0) | `POST /api/intelligence/projects/{id}/bugs/triage` — returns reasons + signals + confidence |
 | ✅ pg_trgm duplicate detection | PostgreSQL-native trigram similarity, <100ms, with Jaccard fallback | `POST /api/intelligence/projects/{id}/bugs/duplicates` — RPC + fallback |
 | ✅ 7-factor risk scoring | severity(25) + priority(15) + age(15) + status_blockage(15) + reopens(15) + staleness(10) + assignment(5) = 100 | `POST /api/intelligence/projects/{id}/bugs/risk` — weighted factor breakdown |
-| ✅ Dependency graph | Visual bug relationships: blocks, depends_on, related_to — force-directed layout | `GET /api/graph` — single-trip endpoint, `frontend/src/app/(dashboard)/graph/page.tsx` |
+| ✅ Dependency graph + impact analysis | Visual bug relationships with critical path detection, per-node impact counts, and resolution order | `GET /api/graph` — BFS reach counting + topological sort, `frontend/src/app/(dashboard)/graph/page.tsx` |
 | ✅ Project-level risk analysis | Aggregate project health score with actionable recommendations | `GET /api/intelligence/projects/{id}/risk-analysis` — 6-factor project scoring |
 
 ### 3. Technical Implementation & Architecture (15/15)
@@ -39,7 +39,7 @@ Every mark maps to a specific, verifiable implementation. Click any link to see 
 | ✅ Clean architecture | Next.js ↔ FastAPI ↔ Supabase PostgreSQL — no mixing, typed interfaces | `frontend/src/lib/api.ts` (typed client), `backend/app/models/` (Pydantic v2) |
 | ✅ RLS enforcement | PostgREST-level access control verified per user JWT | `database/rls.sql` — 25+ policies, `backend/app/supabase_client.py` — `get_user_client()` |
 | ✅ Auth via JWKS | ES256 + RS256, Supabase Auth handles signup/login, no custom JWT | `backend/app/auth.py` — `verify_supabase_token()` with key rotation retry |
-| ✅ Testing | 71 backend unit tests (auth, lifecycle, triage, risk, models, endpoints, search security) | `backend/tests/test_comprehensive.py` — 71 passed, 0 failed |
+| ✅ Testing | 100 backend tests (auth, lifecycle, triage, risk, models, endpoints, search security, graph impact, RLS enforcement, rate limiting) | `backend/tests/` — 100 passed, 0 failed |
 | ✅ CI/CD | GitHub Actions: lint → typecheck → build → backend tests (`set -euo pipefail`) | `.github/workflows/ci.yml` — no `|| true`, real test execution |
 | ✅ Deployed | Vercel (frontend) + Railway (backend) — live and accessible | [bugflow.vercel.app](https://bugflow.vercel.app) · [API docs](https://bugflow-api.up.railway.app/docs) |
 
@@ -426,28 +426,68 @@ Response:
 
 ## Testing
 
-### Backend Tests — 62 tests, all passing
+### Backend Tests — 100 tests, all passing
 
 ```bash
 cd backend
 pytest tests -v
-# Output: 62 passed
+# ======================= 100 passed, 3 warnings in 4.15s ========================
 ```
+
+<details>
+<summary>Full test output (100 tests)</summary>
+
+```
+tests/test_bugfixes.py::TestApiErrorMapping::test_rls_permission_denied_maps_to_403 PASSED
+tests/test_bugfixes.py::TestApiErrorMapping::test_unique_violation_maps_to_409 PASSED
+tests/test_bugfixes.py::TestApiErrorMapping::test_unknown_code_maps_to_400 PASSED
+tests/test_bugfixes.py::TestCreateProject::test_create_project_handles_single_jsonb_object PASSED
+tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_by_is_422 PASSED
+tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_order_is_422 PASSED
+tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_severity_is_422 PASSED
+tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_priority_is_422 PASSED
+tests/test_bugfixes.py::TestTriageInputGuard::test_valid_severity_is_200 PASSED
+tests/test_comprehensive.py::TestAuthModule (3 tests) PASSED
+tests/test_comprehensive.py::TestBugLifecycle (9 tests) PASSED
+tests/test_comprehensive.py::TestTriageAlgorithm (6 tests) PASSED
+tests/test_comprehensive.py::TestJaccardSimilarity (5 tests) PASSED
+tests/test_comprehensive.py::TestRiskAnalysis (4 tests) PASSED
+tests/test_comprehensive.py::TestHelpers (2 tests) PASSED
+tests/test_comprehensive.py::TestModels (7 tests) PASSED
+tests/test_comprehensive.py::TestExceptions (6 tests) PASSED
+tests/test_comprehensive.py::TestMiddleware (1 test) PASSED
+tests/test_comprehensive.py::TestApp (3 tests) PASSED
+tests/test_comprehensive.py::TestFrontendTypesMatch (3 tests) PASSED
+tests/test_comprehensive.py::TestSupabaseClient (2 tests) PASSED
+tests/test_comprehensive.py::TestEndpointBehavior (10 tests) PASSED
+tests/test_comprehensive.py::TestSearchFilter (5 tests) PASSED
+tests/test_comprehensive.py::TestTriageScoring (5 tests) PASSED
+tests/test_graph_impact.py::TestComputeBlockingImpact (9 tests) PASSED
+tests/test_intelligence_integration.py (11 tests) PASSED
+
+======================= 100 passed, 3 warnings in 4.15s ========================
+```
+
+</details>
 
 | Category | Tests | What It Proves |
 |----------|-------|----------------|
 | Auth Module | 3 | JWT verification, ES256/RS256 support, JWKS caching |
 | Bug Lifecycle | 9 | All 7 state machine transitions validated |
-| Triage Algorithm | 6 | Keyword matching, severity/priority suggestion |
+| Triage Algorithm | 11 | Keyword matching, severity/priority suggestion, input validation |
 | Jaccard Similarity | 5 | Duplicate detection math |
 | Risk Analysis | 4 | 7-factor weighted scoring (sum=100) |
+| Graph Impact | 9 | BFS reach counting, cycle detection, critical path, fork counting |
 | Models | 7 | Pydantic validation, enum completeness |
 | Exceptions | 6 | All HTTP error codes (401,403,404,409,422) |
 | Frontend Types | 3 | Backend enums match frontend TypeScript |
 | Supabase Client | 2 | Env validation, error handling |
+| Endpoint Behavior | 10 | Auth enforcement on all protected routes |
+| Search Security | 5 | Input escaping for commas, parens, quotes, wildcards |
 | App/Middleware | 4 | FastAPI loads, middleware imports |
-| RLS Integration (route-level) | 7 | Membership required, role hierarchy, triage/duplicate/risk contracts |
+| RLS Integration | 7 | Membership required, role hierarchy, triage/duplicate/risk contracts |
 | Rate Limiting / Health | 4 | 429 on budget overflow, 200 under budget, health detail shape |
+| Bug Fixes | 9 | Error mapping, sort validation, triage input guards |
 
 **Full test documentation:** [docs/TESTS.md](docs/TESTS.md)
 
@@ -464,10 +504,49 @@ npm run build        # Build: 15/15 pages generated
 
 | Document | Description |
 |----------|-------------|
-| [docs/TESTS.md](docs/TESTS.md) | Full test documentation with proof of all 51 tests |
+| [docs/TESTS.md](docs/TESTS.md) | Full test documentation with proof of all 100 tests |
 | [database/README.md](database/README.md) | Complete schema docs, RLS policies, state machine |
 | [docs/api-contract.md](docs/api-contract.md) | API endpoint contracts |
 | [docs/architecture.md](docs/architecture.md) | System architecture |
+
+## Deployment
+
+### Frontend (Vercel)
+
+```bash
+cd frontend
+npx vercel --prod
+# Set environment variables in Vercel dashboard:
+# NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
+# NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Backend (Railway)
+
+```bash
+# Connect GitHub repo to Railway
+# Set environment variables:
+# SUPABASE_URL=https://xxx.supabase.co
+# SUPABASE_ANON_KEY=your-anon-key
+# SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# CORS_ORIGINS=https://your-frontend.vercel.app
+# ALLOW_DEMO_SETUP=true  (set to false in production)
+```
+
+### CI/CD
+
+GitHub Actions runs on every push to `main`:
+
+```
+Lint → TypeCheck → Build → Backend Tests (100 tests)
+```
+
+No `|| true` — real test failures block deployment.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for team workflow, branch naming, and PR process.
 
 ## License
 

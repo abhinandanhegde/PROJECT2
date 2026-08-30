@@ -6,15 +6,13 @@
 
 ## Table of Contents
 
-1. [Backend Test Suite (51 Tests)](#1-backend-test-suite-51-tests)
+1. [Backend Test Suite (100 Tests)](#1-backend-test-suite-100-tests)
 2. [Frontend Verification](#2-frontend-verification)
-3. [API Endpoint Verification](#3-api-endpoint-verification)
-4. [Security Verification](#4-security-verification)
-5. [CI Pipeline](#5-ci-pipeline)
+3. [CI Pipeline](#3-ci-pipeline)
 
 ---
 
-## 1. Backend Test Suite (51 Tests)
+## 1. Backend Test Suite (100 Tests)
 
 ### Test Categories
 
@@ -22,145 +20,143 @@
 |----------|-------|----------------|
 | Auth Module | 3 | JWT verification, algorithm support, JWKS caching |
 | Bug Lifecycle | 9 | All 7 state machine transitions are valid and complete |
-| Triage Algorithm | 6 | Keyword matching, severity/priority suggestion, edge cases |
+| Triage Algorithm | 11 | Keyword matching, severity/priority suggestion, input validation |
 | Jaccard Similarity | 5 | Duplicate detection math (identical, partial, empty, case-insensitive) |
 | Risk Analysis | 4 | Factor completeness, weight correctness (sum=100), ordering |
+| Graph Impact | 9 | BFS reach counting, cycle detection, critical path, fork counting, tie-breaking |
 | Helpers | 2 | Role hierarchy order and index logic |
 | Models | 7 | Pydantic validation, enum completeness, schema constraints |
 | Exceptions | 6 | All 5 custom HTTP error codes + custom messages |
-| Middleware | 1 | Security middleware importable and correct subclasses |
-| App Entry | 3 | FastAPI app loads, has routes, correct title |
-| Frontend Types | 3 | Backend enums exactly match frontend TypeScript types |
-| Supabase Client | 2 | Env var validation, error handling |
+| Frontend Types | 3 | Backend enums match TypeScript types exactly |
+| Supabase Client | 2 | Env validation, error handling |
+| Endpoint Behavior | 10 | Auth enforcement on all protected routes (401 without token) |
+| Search Security | 5 | Input escaping for commas, parens, quotes, ILIKE wildcards |
+| Triage Scoring | 5 | Keyword-to-severity mapping correctness |
+| App / Middleware | 4 | FastAPI app loads, routers registered, middleware imports |
+| Bug Fixes | 9 | Error mapping, sort validation, triage input guards |
+| Intelligence Integration | 11 | RLS enforcement, role hierarchy, triage contracts, rate limiting |
 
-### Full Test Output (Proof)
+### Full Test Output
 
 ```
-Platform: win32 — Python 3.14.3, pytest-9.1.1
-Date: 2026-08-30
-
 ============================= test session starts =============================
-tests/test_comprehensive.py
+platform win32 -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\abhinandan\Desktop\clonefest\T2
+configfile: pytest.ini
+plugins: anyio-4.13.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO
+collecting ... collected 100 items
 
-TestAuthModule::test_auth_module_importable              PASSED [  1%]
-TestAuthModule::test_accepted_algorithms                 PASSED [  3%]
-TestAuthModule::test_jwks_cache_ttl                      PASSED [  5%]
-TestBugLifecycle::test_valid_transitions_exist           PASSED [  7%]
-TestBugLifecycle::test_new_can_only_go_confirmed         PASSED [  9%]
-TestBugLifecycle::test_confirmed_can_go_in_progress_or_new  PASSED [ 11%]
-TestBugLifecycle::test_in_progress_can_go_resolved_or_confirmed  PASSED [ 13%]
-TestBugLifecycle::test_resolved_can_go_verified_or_reopened  PASSED [ 15%]
-TestBugLifecycle::test_verified_can_go_closed_or_reopened  PASSED [ 17%]
-TestBugLifecycle::test_reopened_can_go_confirmed_or_in_progress  PASSED [ 19%]
-TestBugLifecycle::test_closed_can_only_reopen            PASSED [ 21%]
-TestBugLifecycle::test_all_statuses_have_transitions     PASSED [ 23%]
-TestTriageAlgorithm::test_crash_keyword_suggests_blocker PASSED [ 25%]
-TestTriageAlgorithm::test_critical_keyword_detected      PASSED [ 27%]
-TestTriageAlgorithm::test_typo_keyword_suggests_trivial  PASSED [ 29%]
-TestTriageAlgorithm::test_empty_text_returns_no_matches  PASSED [ 31%]
-TestTriageAlgorithm::test_best_category_returns_highest_severity  PASSED [ 33%]
-TestTriageAlgorithm::test_best_category_returns_none_for_empty  PASSED [ 35%]
-TestJaccardSimilarity::test_identical_strings_return_1   PASSED [ 37%]
-TestJaccardSimilarity::test_completely_different_returns_0  PASSED [ 39%]
-TestJaccardSimilarity::test_empty_strings_return_0       PASSED [ 41%]
-TestJaccardSimilarity::test_partial_overlap              PASSED [ 43%]
-TestJaccardSimilarity::test_case_insensitive             PASSED [ 45%]
-TestRiskAnalysis::test_risk_severity_map_completeness    PASSED [ 47%]
-TestRiskAnalysis::test_risk_priority_map_completeness    PASSED [ 49%]
-TestRiskAnalysis::test_factor_weights_sum_to_100         PASSED [ 50%]
-TestRiskAnalysis::test_risk_levels_ordered               PASSED [ 52%]
-TestHelpers::test_role_hierarchy_order                   PASSED [ 54%]
-TestHelpers::test_role_hierarchy_index                   PASSED [ 56%]
-TestModels::test_bug_create_valid                        PASSED [ 58%]
-TestModels::test_bug_create_empty_title_rejected         PASSED [ 60%]
-TestModels::test_status_change_requires_resolution_for_resolved  PASSED [ 62%]
-TestModels::test_relationship_types                      PASSED [ 64%]
-TestModels::test_all_severity_values                     PASSED [ 66%]
-TestModels::test_all_priority_values                     PASSED [ 68%]
-TestModels::test_all_status_values                       PASSED [ 70%]
-TestExceptions::test_authentication_error_is_401         PASSED [ 72%]
-TestExceptions::test_authorization_error_is_403          PASSED [ 74%]
-TestExceptions::test_not_found_error_is_404              PASSED [ 76%]
-TestExceptions::test_conflict_error_is_409               PASSED [ 78%]
-TestExceptions::test_validation_error_is_422             PASSED [ 80%]
-TestExceptions::test_custom_detail_messages              PASSED [ 82%]
-TestMiddleware::test_middleware_module_importable         PASSED [ 84%]
-TestApp::test_app_importable                             PASSED [ 86%]
-TestApp::test_app_has_routers                            PASSED [ 88%]
-TestApp::test_app_title                                  PASSED [ 90%]
-TestFrontendTypesMatch::test_severity_values_match_frontend  PASSED [ 92%]
-TestFrontendTypesMatch::test_priority_values_match_frontend  PASSED [ 94%]
-TestFrontendTypesMatch::test_status_values_match_frontend  PASSED [ 96%]
-TestSupabaseClient::test_get_user_client_requires_env    PASSED [ 98%]
-TestSupabaseClient::test_service_role_client_requires_env  PASSED [100%]
+tests/test_bugfixes.py::TestApiErrorMapping::test_rls_permission_denied_maps_to_403 PASSED [  1%]
+tests/test_bugfixes.py::TestApiErrorMapping::test_unique_violation_maps_to_409 PASSED [  2%]
+tests/test_bugfixes.py::TestApiErrorMapping::test_unknown_code_maps_to_400 PASSED [  3%]
+tests/test_bugfixes.py::TestCreateProject::test_create_project_handles_single_jsonb_object PASSED [  4%]
+tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_by_is_422 PASSED [  5%]
+tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_order_is_422 PASSED [  6%]
+tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_severity_is_422 PASSED [  7%]
+tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_priority_is_422 PASSED [  8%]
+tests/test_bugfixes.py::TestTriageInputGuard::test_valid_severity_is_200 PASSED [  9%]
+tests/test_comprehensive.py::TestAuthModule::test_auth_module_importable PASSED [ 10%]
+tests/test_comprehensive.py::TestAuthModule::test_accepted_algorithms PASSED [ 11%]
+tests/test_comprehensive.py::TestAuthModule::test_jwks_cache_ttl PASSED  [ 12%]
+tests/test_comprehensive.py::TestBugLifecycle::test_valid_transitions_exist PASSED [ 13%]
+tests/test_comprehensive.py::TestBugLifecycle::test_new_can_only_go_confirmed PASSED [ 14%]
+tests/test_comprehensive.py::TestBugLifecycle::test_confirmed_can_go_in_progress_or_new PASSED [ 15%]
+tests/test_comprehensive.py::TestBugLifecycle::test_in_progress_can_go_resolved_or_confirmed PASSED [ 16%]
+tests/test_comprehensive.py::TestBugLifecycle::test_resolved_can_go_verified_or_reopened PASSED [ 17%]
+tests/test_comprehensive.py::TestBugLifecycle::test_verified_can_go_closed_or_reopened PASSED [ 18%]
+tests/test_comprehensive.py::TestBugLifecycle::test_reopened_can_go_confirmed_or_in_progress PASSED [ 19%]
+tests/test_comprehensive.py::TestBugLifecycle::test_closed_can_only_reopen PASSED [ 20%]
+tests/test_comprehensive.py::TestBugLifecycle::test_all_statuses_have_transitions PASSED [ 21%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_crash_keyword_suggests_blocker PASSED [ 22%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_critical_keyword_detected PASSED [ 23%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_typo_keyword_suggests_trivial PASSED [ 24%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_empty_text_returns_no_matches PASSED [ 25%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_best_category_returns_highest_severity PASSED [ 26%]
+tests/test_comprehensive.py::TestTriageAlgorithm::test_best_category_returns_none_for_empty PASSED [ 27%]
+tests/test_comprehensive.py::TestJaccardSimilarity::test_identical_strings_return_1 PASSED [ 28%]
+tests/test_comprehensive.py::TestJaccardSimilarity::test_completely_different_returns_0 PASSED [ 29%]
+tests/test_comprehensive.py::TestJaccardSimilarity::test_empty_strings_return_0 PASSED [ 30%]
+tests/test_comprehensive.py::TestJaccardSimilarity::test_partial_overlap PASSED [ 31%]
+tests/test_comprehensive.py::TestJaccardSimilarity::test_case_insensitive PASSED [ 32%]
+tests/test_comprehensive.py::TestRiskAnalysis::test_risk_severity_map_completeness PASSED [ 33%]
+tests/test_comprehensive.py::TestRiskAnalysis::test_risk_priority_map_completeness PASSED [ 34%]
+tests/test_comprehensive.py::TestRiskAnalysis::test_factor_weights_sum_to_100 PASSED [ 35%]
+tests/test_comprehensive.py::TestRiskAnalysis::test_risk_levels_ordered PASSED [ 36%]
+tests/test_comprehensive.py::TestHelpers::test_role_hierarchy_order PASSED [ 37%]
+tests/test_comprehensive.py::TestHelpers::test_role_hierarchy_index PASSED [ 38%]
+tests/test_comprehensive.py::TestModels::test_bug_create_valid PASSED    [ 39%]
+tests/test_comprehensive.py::TestModels::test_bug_create_empty_title_rejected PASSED [ 40%]
+tests/test_comprehensive.py::TestModels::test_status_change_requires_resolution_for_resolved PASSED [ 41%]
+tests/test_comprehensive.py::TestModels::test_relationship_types PASSED  [ 42%]
+tests/test_comprehensive.py::TestModels::test_all_severity_values PASSED [ 43%]
+tests/test_comprehensive.py::TestModels::test_all_priority_values PASSED [ 44%]
+tests/test_comprehensive.py::TestModels::test_all_status_values PASSED   [ 45%]
+tests/test_comprehensive.py::TestExceptions::test_authentication_error_is_401 PASSED [ 46%]
+tests/test_comprehensive.py::TestExceptions::test_authorization_error_is_403 PASSED [ 47%]
+tests/test_comprehensive.py::TestExceptions::test_not_found_error_is_404 PASSED [ 48%]
+tests/test_comprehensive.py::TestExceptions::test_conflict_error_is_409 PASSED [ 49%]
+tests/test_comprehensive.py::TestExceptions::test_validation_error_is_422 PASSED [ 50%]
+tests/test_comprehensive.py::TestExceptions::test_custom_detail_messages PASSED [ 51%]
+tests/test_comprehensive.py::TestMiddleware::test_middleware_module_importable PASSED [ 52%]
+tests/test_comprehensive.py::TestApp::test_app_importable PASSED         [ 53%]
+tests/test_comprehensive.py::TestApp::test_app_has_routers PASSED        [ 54%]
+tests/test_comprehensive.py::TestApp::test_app_title PASSED              [ 55%]
+tests/test_comprehensive.py::TestFrontendTypesMatch::test_severity_values_match_frontend PASSED [ 56%]
+tests/test_comprehensive.py::TestFrontendTypesMatch::test_priority_values_match_frontend PASSED [ 57%]
+tests/test_comprehensive.py::TestFrontendTypesMatch::test_status_values_match_frontend PASSED [ 58%]
+tests/test_comprehensive.py::TestSupabaseClient::test_get_user_client_requires_env PASSED [ 59%]
+tests/test_comprehensive.py::TestSupabaseClient::test_service_role_client_requires_env PASSED [ 60%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_health_returns_200 PASSED [ 61%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_health_detail_returns_uptime PASSED [ 62%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_projects_requires_auth PASSED [ 63%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_bugs_requires_auth PASSED [ 64%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_dashboard_stats_requires_auth PASSED [ 65%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_search_requires_auth PASSED [ 66%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_auth_me_requires_auth PASSED [ 67%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_invalid_token_returns_401 PASSED [ 68%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_create_project_requires_auth PASSED [ 69%]
+tests/test_comprehensive.py::TestEndpointBehavior::test_intelligence_triage_requires_auth PASSED [ 70%]
+tests/test_comprehensive.py::TestSearchFilter::test_comma_is_escaped PASSED [ 71%]
+tests/test_comprehensive.py::TestSearchFilter::test_parens_are_escaped PASSED [ 72%]
+tests/test_comprehensive.py::TestSearchFilter::test_quotes_are_escaped PASSED [ 73%]
+tests/test_comprehensive.py::TestSearchFilter::test_ilike_wildcards_are_escaped PASSED [ 74%]
+tests/test_comprehensive.py::TestSearchFilter::test_output_has_title_and_description PASSED [ 75%]
+tests/test_comprehensive.py::TestTriageScoring::test_security_keyword_suggests_high_severity PASSED [ 76%]
+tests/test_comprehensive.py::TestTriageScoring::test_production_down_is_blocker PASSED [ 77%]
+tests/test_comprehensive.py::TestTriageScoring::test_cosmetic_is_minor PASSED [ 78%]
+tests/test_comprehensive.py::TestTriageScoring::test_immediate_keyword_suggests_p1 PASSED [ 79%]
+tests/test_comprehensive.py::TestTriageScoring::test_suggestion_keyword_suggests_p5 PASSED [ 80%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_empty_input PASSED [ 81%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_related_edges_have_no_blocking_impact PASSED [ 82%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_depends_on_is_normalized_to_a_blocking_edge PASSED [ 83%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_simple_chain PASSED [ 84%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_fork_counts_and_path PASSED [ 85%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_cycle_terminates PASSED [ 86%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_edges_to_hidden_nodes_ignored PASSED [ 87%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_self_edge_ignored PASSED [ 88%]
+tests/test_graph_impact.py::TestComputeBlockingImpact::test_deterministic_tie_break PASSED [ 89%]
+tests/test_intelligence_integration.py::TestRlsMembershipEnforcement::test_non_member_rejected_on_triage PASSED [ 90%]
+tests/test_intelligence_integration.py::TestRlsMembershipEnforcement::test_member_allowed_on_triage PASSED [ 91%]
+tests/test_intelligence_integration.py::TestRlsMembershipEnforcement::test_member_allowed_on_duplicates PASSED [ 92%]
+tests/test_intelligence_integration.py::TestRlsMembershipEnforcement::test_non_member_rejected_on_risk_analysis PASSED [ 93%]
+tests/test_intelligence_integration.py::TestRoleHierarchy::test_reporter_can_use_reporter_level_endpoint PASSED [ 94%]
+tests/test_intelligence_integration.py::TestRoleHierarchy::test_admin_can_use_same_endpoint PASSED [ 95%]
+tests/test_intelligence_integration.py::TestTriageEndpointContract::test_triage_returns_suggested_values PASSED [ 96%]
+tests/test_intelligence_integration.py::TestTriageEndpointContract::test_triage_rejects_empty_title PASSED [ 97%]
+tests/test_intelligence_integration.py::TestRateLimit::test_rate_limit_returns_429 PASSED [ 98%]
+tests/test_intelligence_integration.py::TestRateLimit::test_rate_limit_allows_under_budget PASSED [ 99%]
+tests/test_intelligence_integration.py::TestRateLimit::test_health_detail_includes_request_id PASSED [100%]
 
-======================== 51 passed, 1 warning in 6.08s ========================
+============================== warnings summary ===============================
+backend/tests/test_bugfixes.py::TestCreateProject::test_create_project_handles_single_jsonb_object
+  DeprecationWarning: The 'timeout' parameter is deprecated.
+
+backend/tests/test_bugfixes.py::TestCreateProject::test_create_project_handles_single_jsonb_object
+  DeprecationWarning: The 'verify' parameter is deprecated.
+
+======================= 100 passed, 3 warnings in 4.15s ========================
 ```
-
-### What Each Test Validates
-
-#### Auth Module (3 tests)
-- `test_auth_module_importable` — All auth functions exist: verify_supabase_token, get_current_user, get_current_active_user, get_raw_token
-- `test_accepted_algorithms` — ES256 and RS256 both accepted (Supabase uses ES256 by default)
-- `test_jwks_cache_ttl` — JWKS cache TTL is 3600 seconds (1 hour) to balance freshness vs performance
-
-#### Bug Lifecycle State Machine (9 tests)
-- `test_valid_transitions_exist` — All 7 statuses have defined transitions
-- `test_new_can_only_go_confirmed` — NEW → CONFIRMED (only valid transition)
-- `test_confirmed_can_go_in_progress_or_new` — CONFIRMED → {IN_PROGRESS, NEW}
-- `test_in_progress_can_go_resolved_or_confirmed` — IN_PROGRESS → {RESOLVED, CONFIRMED}
-- `test_resolved_can_go_verified_or_reopened` — RESOLVED → {VERIFIED, REOPENED}
-- `test_verified_can_go_closed_or_reopened` — VERIFIED → {CLOSED, REOPENED}
-- `test_reopened_can_go_confirmed_or_in_progress` — REOPENED → {CONFIRMED, IN_PROGRESS}
-- `test_closed_can_only_reopen` — CLOSED → REOPENED (admin only enforced in backend)
-- `test_all_statuses_have_transitions` — Every BugStatus enum value has a transition entry
-
-#### Triage Algorithm (6 tests)
-- `test_crash_keyword_suggests_blocker` — "crash" keyword maps to BLOCKER severity
-- `test_critical_keyword_detected` — "critical" keyword maps to CRITICAL severity
-- `test_typo_keyword_suggests_trivial` — "typo" keyword maps to TRIVIAL severity
-- `test_empty_text_returns_no_matches` — Empty input returns no matches
-- `test_best_category_returns_highest_severity` — When multiple categories match, highest severity wins
-- `test_best_category_returns_none_for_empty` — Empty matches dict returns None
-
-#### Jaccard Similarity (5 tests)
-- `test_identical_strings_return_1` — Same text → similarity 1.0
-- `test_completely_different_returns_0` — No shared words → similarity 0.0
-- `test_empty_strings_return_0` — Edge case: empty strings
-- `test_partial_overlap` — "login crashes on auth" vs "login fails on auth page" → 0.3 < sim < 0.8
-- `test_case_insensitive` — Case doesn't affect similarity
-
-#### Risk Analysis (4 tests)
-- `test_risk_severity_map_completeness` — All 6 severity levels have risk scores
-- `test_risk_priority_map_completeness` — All 5 priority levels have risk scores
-- `test_factor_weights_sum_to_100` — Total weight = 100 (ensures normalized scoring)
-- `test_risk_levels_ordered` — BLOCKER > CRITICAL > MAJOR > NORMAL in risk contribution
-
-#### Models (7 tests)
-- `test_bug_create_valid` — Valid BugCreate with title, severity, priority
-- `test_bug_create_empty_title_rejected` — Empty title raises validation error
-- `test_status_change_requires_resolution_for_resolved` — RESOLVED status requires resolution field
-- `test_relationship_types` — blocks, depends_on, related_to all defined
-- `test_all_severity_values` — 6 severities: BLOCKER, CRITICAL, MAJOR, NORMAL, MINOR, TRIVIAL
-- `test_all_priority_values` — 5 priorities: P1, P2, P3, P4, P5
-- `test_all_status_values` — 7 statuses: NEW, CONFIRMED, IN_PROGRESS, RESOLVED, VERIFIED, CLOSED, REOPENED
-
-#### Exceptions (6 tests)
-- `test_authentication_error_is_401` — HTTP 401
-- `test_authorization_error_is_403` — HTTP 403
-- `test_not_found_error_is_404` — HTTP 404
-- `test_conflict_error_is_409` — HTTP 409
-- `test_validation_error_is_422` — HTTP 422
-- `test_custom_detail_messages` — Custom messages pass through correctly
-
-#### Frontend Type Consistency (3 tests)
-- `test_severity_values_match_frontend` — Backend BugSeverity enum = TypeScript BugSeverity type
-- `test_priority_values_match_frontend` — Backend BugPriority enum = TypeScript BugPriority type
-- `test_status_values_match_frontend` — Backend BugStatus enum = TypeScript BugStatus type
-
-#### Supabase Client (2 tests)
-- `test_get_user_client_requires_env` — Raises RuntimeError when SUPABASE_URL is empty
-- `test_service_role_client_requires_env` — Raises RuntimeError when SUPABASE_SERVICE_ROLE_KEY is empty
 
 ---
 
@@ -169,148 +165,62 @@ TestSupabaseClient::test_service_role_client_requires_env  PASSED [100%]
 ### TypeScript Compilation
 
 ```
-$ npx tsc --noEmit
-(exit code 0 — no errors)
+$ cd frontend && npx tsc --noEmit
+# (no output = 0 errors)
 ```
 
 ### ESLint
 
 ```
-$ npx next lint
+$ cd frontend && npx next lint
 ✔ No ESLint warnings or errors
 ```
 
-### Build Output (Previous successful run)
+### Production Build
 
 ```
+$ cd frontend && npm run build
+
 Route (app)                                 Size  First Load JS
-┌ ○ /                                    5.29 kB         175 kB
-├ ○ /_not-found                            991 B         104 kB
-├ ○ /bugs                                5.29 kB         175 kB
-├ ƒ /bugs/[id]                           6.67 kB         178 kB
-├ ○ /bugs/new                            4.65 kB         176 kB
-├ ○ /graph                               4.95 kB         174 kB
-├ ○ /login                               2.02 kB         173 kB
-├ ○ /projects                            3.59 kB         173 kB
-├ ○ /reports                             3.19 kB         173 kB
-├ ○ /search                              3.42 kB         175 kB
-├ ○ /settings                            1.45 kB         171 kB
-├ ○ /signup                              2.03 kB         173 kB
-└ ○ /teams                               3.55 kB         173 kB
+┌ ○ /                                    5.13 kB         176 kB
+├ ○ /_not-found                            127 B         103 kB
+├ ○ /analytics                           4.13 kB         173 kB
+├ ○ /bugs                                5.78 kB         175 kB
+├ ƒ /bugs/[id]                           6.88 kB         178 kB
+├ ○ /bugs/new                            5.97 kB         177 kB
+├ ○ /graph                               6.56 kB         176 kB
+├ ○ /login                               2.17 kB         173 kB
+├ ○ /projects                            3.92 kB         173 kB
+├ ○ /reports                             3.96 kB         173 kB
+├ ○ /search                              3.63 kB         175 kB
+├ ○ /settings                            1.52 kB         171 kB
+├ ○ /signup                              2.21 kB         173 kB
+└ ○ /teams                               3.96 kB         173 kB
 
 ✓ Compiled successfully
-✓ Generating static pages (15/15)
+✓ Linting and checking validity of types
+✓ Generating static pages (16/16)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
 ```
 
 ---
 
-## 3. API Endpoint Verification
+## 3. CI Pipeline
 
-All 32 endpoints verified against live backend with authenticated JWT:
-
-| # | Endpoint | Method | Status | Verified |
-|---|----------|--------|--------|----------|
-| 1 | `/health` | GET | 200 | ✅ |
-| 2 | `/api/auth/me` | GET | 200 | ✅ |
-| 3 | `/api/projects` | GET | 200 | ✅ |
-| 4 | `/api/projects` | POST | 201 | ✅ |
-| 5 | `/api/projects/{id}` | GET | 200 | ✅ |
-| 6 | `/api/projects/{id}` | PUT | 200 | ✅ |
-| 7 | `/api/projects/{id}` | DELETE | 200 | ✅ |
-| 8 | `/api/projects/{id}/stats` | GET | 200 | ✅ |
-| 9 | `/api/projects/{id}/bugs` | GET | 200 | ✅ |
-| 10 | `/api/projects/{id}/bugs` | POST | 201 | ✅ |
-| 11 | `/api/projects/{id}/bugs/{id}` | GET | 200 | ✅ |
-| 12 | `/api/projects/{id}/bugs/{id}` | PUT | 200 | ✅ |
-| 13 | `/api/projects/{id}/bugs/{id}/status` | PATCH | 200 | ✅ |
-| 14 | `/api/projects/{id}/bugs/{id}/assign` | PATCH | 200 | ✅ |
-| 15 | `/api/bugs/search?q=...` | GET | 200 | ✅ |
-| 16 | `/api/bugs/{id}/comments` | GET | 200 | ✅ |
-| 17 | `/api/bugs/{id}/comments` | POST | 201 | ✅ |
-| 18 | `/api/bugs/{id}/comments/{id}` | PUT | 200 | ✅ |
-| 19 | `/api/bugs/{id}/comments/{id}` | DELETE | 200 | ✅ |
-| 20 | `/api/bugs/{id}/relationships` | GET | 200 | ✅ |
-| 21 | `/api/bugs/{id}/relationships` | POST | 201 | ✅ |
-| 22 | `/api/bugs/{id}/relationships/{id}` | DELETE | 200 | ✅ |
-| 23 | `/api/projects/{id}/members` | GET | 200 | ✅ |
-| 24 | `/api/projects/{id}/members` | POST | 201 | ✅ |
-| 25 | `/api/projects/{id}/members/{id}` | PUT | 200 | ✅ |
-| 26 | `/api/projects/{id}/members/{id}` | DELETE | 200 | ✅ |
-| 27 | `/api/projects/{id}/components` | GET | 200 | ✅ |
-| 28 | `/api/projects/{id}/components` | POST | 201 | ✅ |
-| 29 | `/api/dashboard/stats` | GET | 200 | ✅ |
-| 30 | `/api/dashboard/recent` | GET | 200 | ✅ |
-| 31 | `/api/dashboard/assigned` | GET | 200 | ✅ |
-| 32 | `/api/demo/setup` | POST | 200 | ✅ |
-
-### Intelligence Endpoints
-
-| # | Endpoint | Method | Status | Verified |
-|---|----------|--------|--------|----------|
-| 33 | `/api/intelligence/projects/{id}/bugs/triage` | POST | 200 | ✅ |
-| 34 | `/api/intelligence/projects/{id}/bugs/duplicates` | POST | 200 | ✅ |
-| 35 | `/api/intelligence/projects/{id}/bugs/risk` | POST | 200 | ✅ |
-| 36 | `/api/intelligence/projects/{id}/triage/suggestions` | GET | 200 | ✅ |
-| 37 | `/api/intelligence/projects/{id}/risk-analysis` | GET | 200 | ✅ |
-
----
-
-## 4. Security Verification
-
-### JWT Verification
-- ✅ ES256 tokens accepted (Supabase default)
-- ✅ RS256 tokens accepted (Supabase rotation)
-- ✅ JWKS auto-refresh on key rotation
-- ✅ Issuer validation (Supabase URL)
-- ✅ Audience validation ("authenticated")
-- ✅ Expiration validation
-- ✅ 401 returned for invalid tokens
-
-### Row-Level Security
-- ✅ RLS enabled on all 11 tables
-- ✅ Users can only read projects they're members of
-- ✅ Users can only see bugs in their projects
-- ✅ Service-role bypasses RLS (admin operations only)
-- ✅ User-context client enforces RLS
-
-### Role-Based Access Control
-- ✅ REPORTER can create bugs, update own bugs
-- ✅ DEVELOPER can update any bug, change status
-- ✅ QA can view and comment
-- ✅ ADMIN can manage members, delete bugs, reopen closed bugs
-
-### Security Headers
-- ✅ X-Content-Type-Options: nosniff
-- ✅ X-Frame-Options: DENY
-- ✅ X-XSS-Protection: 1; mode=block
-- ✅ Referrer-Policy: strict-origin-when-cross-origin
-- ✅ Cache-Control: no-store, no-cache
-- ✅ X-Request-ID on every response
-
----
-
-## 5. CI Pipeline
-
-### GitHub Actions Workflow
+GitHub Actions runs on every push to `main`:
 
 ```yaml
 jobs:
-  lint:        # npx next lint — 0 warnings, 0 errors
-  typecheck:   # npx tsc --noEmit — 0 errors
-  build:       # npm run build — 15/15 pages generated
-  backend-test: # pytest tests/ -v — 51 passed
+  lint:          # cd frontend && npm ci && npm run lint
+  typecheck:     # cd frontend && npm ci && npx tsc --noEmit
+  build:         # cd frontend && npm ci && npm run build
+  backend-test:  # cd backend && python -m pytest tests/ -v
 ```
 
-### CI Status Matrix
-
-| Job | Status | Duration |
-|-----|--------|----------|
-| Lint | ✅ Pass | ~15s |
-| Type Check | ✅ Pass | ~10s |
-| Build | ✅ Pass | ~45s |
-| Backend Tests | ✅ Pass | ~6s |
+No `|| true` — real test failures block the pipeline.
 
 ---
 
-*Document generated: August 30, 2026*
-*BugFlow v0.1.0 — CloneFest Hackathon*
+*Last updated: 2026-08-30*
