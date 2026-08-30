@@ -66,52 +66,57 @@ export default function IntelligencePage() {
         return
       }
 
-      // Run ALL intelligence in parallel — triage + duplicates + risk for top 5 bugs
+      // Show bugs + impact IMMEDIATELY (no waiting)
+      setState({ bugs, triage: new Map(), duplicates: new Map(), risks: new Map(), impact: impactInfo, loading: false })
+
       const topBugs = bugs.slice(0, 5)
 
-      // Fire all 15 calls simultaneously (5 triage + 5 dups + 5 risk)
-      const [triageResults, dupResults, riskResults] = await Promise.all([
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
-          )
-        ),
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
-          )
-        ),
-        Promise.allSettled(
-          topBugs.map((b) =>
-            api.analyzeRisk(projectId, b.id)
-          )
-        ),
-      ])
+      // Fire all 15 calls simultaneously — but render each section as it arrives
+      const allTriage = Promise.allSettled(
+        topBugs.map((b) =>
+          api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
+        )
+      )
+      const allDups = Promise.allSettled(
+        topBugs.map((b) =>
+          api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
+        )
+      )
+      const allRisk = Promise.allSettled(
+        topBugs.map((b) =>
+          api.analyzeRisk(projectId, b.id)
+        )
+      )
 
-      const triageMap = new Map<string, TriageResult>()
-      const dupMap = new Map<string, DuplicateResult>()
-      const riskMap = new Map<string, RiskResult>()
-
-      topBugs.forEach((b, i) => {
-        if (triageResults[i].status === 'fulfilled') {
-          triageMap.set(b.id, triageResults[i].value as TriageResult)
-        } else {
-          console.error('Triage failed for', b.id, triageResults[i].reason)
-        }
-        if (dupResults[i].status === 'fulfilled') {
-          const dupResult = dupResults[i].value as DuplicateResult
-          if (dupResult.candidates && dupResult.candidates.length > 0) dupMap.set(b.id, dupResult)
-        } else {
-          console.error('Duplicates failed for', b.id, dupResults[i].reason)
-        }
-        if (riskResults[i].status === 'fulfilled') {
-          riskMap.set(b.id, riskResults[i].value as RiskResult)
-        } else {
-          console.error('Risk failed for', b.id, riskResults[i].reason)
-        }
+      // Triage arrives first (fastest) — render immediately
+      allTriage.then((results) => {
+        const triageMap = new Map<string, TriageResult>()
+        topBugs.forEach((b, i) => {
+          if (results[i].status === 'fulfilled') triageMap.set(b.id, results[i].value as TriageResult)
+        })
+        setState((s) => ({ ...s, triage: triageMap }))
       })
 
-      setState({ bugs, triage: triageMap, duplicates: dupMap, risks: riskMap, impact: impactInfo, loading: false })
+      // Duplicates arrive next — render immediately
+      allDups.then((results) => {
+        const dupMap = new Map<string, DuplicateResult>()
+        topBugs.forEach((b, i) => {
+          if (results[i].status === 'fulfilled') {
+            const d = results[i].value as DuplicateResult
+            if (d.candidates && d.candidates.length > 0) dupMap.set(b.id, d)
+          }
+        })
+        setState((s) => ({ ...s, duplicates: dupMap }))
+      })
+
+      // Risk arrives last — render immediately
+      allRisk.then((results) => {
+        const riskMap = new Map<string, RiskResult>()
+        topBugs.forEach((b, i) => {
+          if (results[i].status === 'fulfilled') riskMap.set(b.id, results[i].value as RiskResult)
+        })
+        setState((s) => ({ ...s, risks: riskMap }))
+      })
     } catch {
       setState((s) => ({ ...s, loading: false }))
     }
@@ -119,13 +124,19 @@ export default function IntelligencePage() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
-  if (state.loading) {
+  // Show header + impact immediately, even while bugs load
+  if (state.loading && state.bugs.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 bg-stone-200 dark:bg-stone-800 rounded animate-pulse" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
+            Intelligence Center
+          </h1>
+          <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">Loading...</p>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-64 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
+            <div key={i} className="h-48 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
           ))}
         </div>
       </div>
