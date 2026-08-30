@@ -11,6 +11,8 @@ interface GraphNode {
   title: string
   status: string
   severity: string
+  blocksCount: number
+  blockedByCount: number
   projectId: string
   projectName: string
   x: number
@@ -31,8 +33,17 @@ interface GraphNodePayload {
   title: string
   status: string
   severity: string
+  blocks_count?: number
+  blocked_by_count?: number
   project_id: string
   project_name: string
+}
+
+interface CriticalPathNode {
+  id: string
+  number?: number | null
+  title: string
+  status: string
 }
 
 interface GraphEdgePayload {
@@ -195,6 +206,7 @@ function settleLayout(
 export default function GraphPage() {
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [edges, setEdges] = useState<GraphEdge[]>([])
+  const [criticalPath, setCriticalPath] = useState<CriticalPathNode[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState({ width: 900, height: 520 })
@@ -220,7 +232,11 @@ export default function GraphPage() {
       try {
         // Single round trip: the backend returns all visible nodes + edges.
         const graphRes = await api.getGraph().catch(() => null)
-        const graph: { nodes?: GraphNodePayload[]; edges?: GraphEdgePayload[] } =
+        const graph: {
+          nodes?: GraphNodePayload[]
+          edges?: GraphEdgePayload[]
+          critical_path?: CriticalPathNode[]
+        } =
           graphRes?.data || {}
 
         const rawNodes = graph.nodes || []
@@ -251,9 +267,12 @@ export default function GraphPage() {
           const c = centers.get(b.project_id)
           return {
             id: b.id,
+            number: b.number,
             title: b.title,
             status: b.status,
             severity: b.severity,
+            blocksCount: b.blocks_count ?? 0,
+            blockedByCount: b.blocked_by_count ?? 0,
             projectId: b.project_id,
             projectName: b.project_name,
             x: (c?.x ?? 450) + (Math.random() - 0.5) * 90,
@@ -278,6 +297,9 @@ export default function GraphPage() {
 
         setNodes(settleLayout(allNodes, allEdges, dimensions.width, dimensions.height))
         setEdges(allEdges)
+        const path = graph.critical_path || []
+        // Do not advertise a chain that was removed by the readability cap.
+        setCriticalPath(path.every((node) => keptIds.has(node.id)) ? path : [])
       } catch {
         // Silent fail
       } finally {
@@ -341,6 +363,10 @@ const projectLabels = useMemo(() => {
 
   const shownStatuses = Array.from(new Set(nodes.map((n) => n.status))).sort()
   const shownProjects = new Set(nodes.map((n) => n.projectName)).size
+  const criticalRoot = criticalPath[0]
+  const criticalUnblocks = criticalRoot
+    ? (nodeById.get(criticalRoot.id)?.blocksCount ?? criticalPath.length - 1)
+    : 0
 
   return (
     <div className="space-y-6">
@@ -495,6 +521,14 @@ const projectLabels = useMemo(() => {
               const isSelected = selectedNode === node.id
               const isConnected = connectedNodeIds.has(node.id)
               const isDimmed = selectedNode && !isSelected && !isConnected
+              const impact = [
+                node.blocksCount > 0
+                  ? `unblocks ${node.blocksCount} downstream bug${node.blocksCount === 1 ? '' : 's'}`
+                  : '',
+                node.blockedByCount > 0
+                  ? `blocked by ${node.blockedByCount} upstream bug${node.blockedByCount === 1 ? '' : 's'}`
+                  : '',
+              ].filter(Boolean).join(' - ')
 
               return (
                 <g
@@ -503,7 +537,7 @@ const projectLabels = useMemo(() => {
                   className="cursor-pointer"
                   style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
                 >
-                  <title>{`${bugRef(node)} — ${node.title} (${node.status.replace('_', ' ')})`}</title>
+                  <title>{`${bugRef(node)} - ${node.title} (${node.status.replace('_', ' ')})${impact ? ` - ${impact}` : ''}`}</title>
                   {isSelected && (
                     <circle cx={node.x} cy={node.y} r={19} fill={color} opacity={0.18} />
                   )}
@@ -565,6 +599,20 @@ const projectLabels = useMemo(() => {
                     View Bug →
                   </Link>
                 </div>
+                {(node.blocksCount > 0 || node.blockedByCount > 0) && (
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {node.blocksCount > 0 && (
+                      <span className="px-2 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 font-medium">
+                        Unblocks {node.blocksCount} downstream bug{node.blocksCount === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {node.blockedByCount > 0 && (
+                      <span className="px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300 font-medium">
+                        Blocked by {node.blockedByCount} upstream bug{node.blockedByCount === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {connectedEdges.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {connectedEdges.map((e) => {
@@ -591,6 +639,27 @@ const projectLabels = useMemo(() => {
       {/* Stats bar */}
       {nodes.length > 0 && (
         <>
+          {criticalPath.length >= 2 && criticalRoot && (
+            <div className="rounded-2xl px-4 py-3 border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-300">
+                Critical Path
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-stone-700 dark:text-stone-300">
+                <span className="text-stone-500 dark:text-stone-400">Resolution order:</span>
+                {criticalPath.map((bug, index) => (
+                  <React.Fragment key={bug.id}>
+                    {index > 0 && <span className="text-red-400">→</span>}
+                    <span title={bug.title} className="font-mono font-bold text-red-700 dark:text-red-300">
+                      {bugRef(bug)}
+                    </span>
+                  </React.Fragment>
+                ))}
+                <span className="ml-1 text-stone-500 dark:text-stone-400">
+                  Resolving {bugRef(criticalRoot)} unblocks {criticalUnblocks} downstream bug{criticalUnblocks === 1 ? '' : 's'}.
+                </span>
+              </div>
+            </div>
+          )}
           <p className="text-xs text-stone-500 dark:text-stone-400">
             Showing {nodes.length} bugs with dependencies across {shownProjects} project{shownProjects !== 1 ? 's' : ''} — bugs without relationships are hidden to keep the view simple.
           </p>

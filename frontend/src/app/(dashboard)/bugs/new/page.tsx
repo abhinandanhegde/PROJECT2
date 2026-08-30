@@ -126,6 +126,10 @@ export default function NewBugPage() {
   }
 
   const next = () => {
+    if (!selectedProjectId && !projects[0]?.id) {
+      toastError('No project available', 'Refresh the page or create/join a project before reporting a bug.')
+      return
+    }
     if (!canProceed()) {
       toastError('Please fill in the title and description before continuing')
       return
@@ -141,9 +145,14 @@ export default function NewBugPage() {
       return
     }
 
+    const projId = selectedProjectId || projects[0]?.id
+    if (!projId) {
+      toastError('No project available', 'Refresh the page or create/join a project before reporting a bug.')
+      return
+    }
+
     setLoading(true)
     try {
-      const projId = selectedProjectId || (projects[0]?.id ?? 'default')
       await api.createBug(projId, {
         title: title.trim(),
         description: description.trim(),
@@ -465,7 +474,7 @@ export default function NewBugPage() {
                 <div className="px-4 py-3 flex justify-between gap-4 text-sm">
                   <dt className="text-stone-500 dark:text-stone-400 shrink-0">Project</dt>
                   <dd className="text-stone-900 dark:text-white text-right font-medium">
-                    {currentProject?.name || selectedProjectId || 'Default'}
+                    {currentProject?.name || 'No project selected'}
                   </dd>
                 </div>
                 <div className="px-4 py-3 flex justify-between gap-4 text-sm">

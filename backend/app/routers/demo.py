@@ -30,7 +30,7 @@ class DemoSetupRequest(BaseModel):
 
 from app.seed_data import (
     USERS, PROJECTS, ROLES, PROJECT_MEMBERS, COMPONENTS_PER_PROJECT,
-    PROJECT_BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES
+    PROJECT_BUG_TEMPLATES, COMMENTS
 )
 
 
@@ -222,7 +222,10 @@ def _seed_all(db, user_id: str) -> dict:
     rels = []
     for pid, pb in byp.items():
         for i in range(min(5, len(pb) - 1)):
-            rtype = RELATIONSHIP_TYPES[i % len(RELATIONSHIP_TYPES)]
+            # Three consecutive blocks edges per project give the dependency
+            # graph a real chain (the critical path), so "fixing X unblocks N"
+            # impact is visible in the demo. depends_on/related_to round it out.
+            rtype = ["blocks", "blocks", "blocks", "depends_on", "related_to"][i % 5]
             rels.append({
                 "id": _uid("rel", pb[i]["id"], pb[i + 1]["id"], rtype),
                 "source_bug_id": pb[i]["id"],

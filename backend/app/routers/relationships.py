@@ -16,6 +16,98 @@ router = APIRouter(prefix="/api", tags=["relationships"])
 GRAPH_BUG_LIMIT = 150
 
 
+def compute_blocking_impact(
+    node_ids: list[str],
+    edges: list[dict],
+) -> tuple[dict[str, int], dict[str, int], list[str]]:
+    """Derive blocking impact from the semantic blocking relationships.
+
+    Returns (blocks_count, blocked_by_count, critical_path) where:
+      - blocks_count[b]    = distinct bugs reachable downstream of b (fixing b
+                             unblocks these).
+      - blocked_by_count[b]= distinct bugs upstream that reach b.
+      - critical_path      = longest directed 'blocks' chain (ids, length >= 2),
+                             tie-broken by the root that unblocks the most bugs.
+
+    A 'blocks' edge follows source -> target. A 'depends_on' edge is its
+    inverse (source depends on target, so target blocks source). `related_to`
+    has no resolution impact. Edges are only followed between *visible* ids.
+    Reach counts are cycle-safe. A critical path is only reported for an
+    acyclic blocks graph, because a dependency cycle has no valid resolution
+    order.
+    """
+    if not node_ids:
+        return {}, {}, []
+
+    visible = set(node_ids)
+    adj: dict[str, set[str]] = {}
+    rev: dict[str, set[str]] = {}
+    for e in edges:
+        relationship_type = e.get("relationship_type")
+        if relationship_type == "blocks":
+            s, t = e.get("source_bug_id"), e.get("target_bug_id")
+        elif relationship_type == "depends_on":
+            s, t = e.get("target_bug_id"), e.get("source_bug_id")
+        else:
+            continue
+        if s in visible and t in visible and s != t:
+            adj.setdefault(s, set()).add(t)
+            rev.setdefault(t, set()).add(s)
+
+    def _reach(graph: dict[str, set[str]]) -> dict[str, int]:
+        counts = {}
+        for start in sorted(node_ids):
+            reached: set[str] = set()
+            todo = list(graph.get(start, ()))
+            while todo:
+                current = todo.pop()
+                if current == start or current in reached:
+                    continue
+                reached.add(current)
+                todo.extend(graph.get(current, ()))
+            counts[start] = len(reached)
+        return counts
+
+    blocks_count = _reach(adj)
+    blocked_by_count = _reach(rev)
+
+    indegree = {u: 0 for u in node_ids}
+    for targets in adj.values():
+        for target in targets:
+            indegree[target] += 1
+    ready = sorted(u for u, degree in indegree.items() if degree == 0)
+    topo: list[str] = []
+    while ready:
+        u = ready.pop(0)
+        topo.append(u)
+        for v in sorted(adj.get(u, ())):
+            indegree[v] -= 1
+            if indegree[v] == 0:
+                ready.append(v)
+                ready.sort()
+
+    # A cycle is a deadlock, not a resolution path; surface no misleading path.
+    if len(topo) != len(node_ids):
+        return blocks_count, blocked_by_count, []
+
+    paths = {u: [u] for u in node_ids}
+    for u in reversed(topo):
+        choices = [[u] + paths[v] for v in sorted(adj.get(u, ()))]
+        if choices:
+            # `choices` is sorted, so equal-length paths retain a stable first
+            # branch instead of depending on set iteration order.
+            paths[u] = max(choices, key=len)
+
+    critical = max(
+        paths.values(),
+        key=lambda path: (len(path), blocks_count.get(path[0], 0), tuple(path)),
+    )
+    if len(critical) < 2:
+        critical = []
+
+    return blocks_count, blocked_by_count, critical
+
+
 @router.get("/graph")
 async def bug_graph(auth=Depends(get_current_user_with_client)):
     """Return bugs + relationships in ONE round trip for the graph page.
@@ -75,6 +167,18 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
         })
 
     numbers = bug_number_map(db)
+    title_map = {b["id"]: b["title"] for b in bugs}
+    status_map = {b["id"]: b["status"] for b in bugs}
+    blocks_count, blocked_by_count, critical_ids = compute_blocking_impact(bug_ids, edges)
+    critical_path = [
+        {
+            "id": bid,
+            "number": numbers.get(bid),
+            "title": title_map.get(bid, ""),
+            "status": status_map.get(bid, ""),
+        }
+        for bid in critical_ids
+    ]
     nodes = [
         {
             "id": b["id"],
@@ -84,6 +188,8 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "severity": b["severity"],
             "project_id": b["project_id"],
             "project_name": project_names.get(b["project_id"], "Unknown project"),
+            "blocks_count": blocks_count.get(b["id"], 0),
+            "blocked_by_count": blocked_by_count.get(b["id"], 0),
         }
         for b in bugs
     ]
@@ -91,6 +197,7 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
         "data": {
             "nodes": nodes,
             "edges": edges,
+            "critical_path": critical_path,
             "projects": [{"id": pid, "name": name} for pid, name in project_names.items()],
         }
     }
