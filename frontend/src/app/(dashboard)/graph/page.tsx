@@ -59,6 +59,100 @@ const EDGE_COLORS: Record<string, string> = {
   related_to: '#94a3b8',
 }
 
+// A single synchronous layout pass. Nodes are grouped by project; the whole
+// graph settles instantly and is drawn statically — no animation loop.
+function computeCenters(ids: string[], width: number, height: number) {
+  const centers = new Map<string, { x: number; y: number }>()
+  if (ids.length === 0) return centers
+
+  const cols = ids.length > 4 ? 3 : ids.length > 1 ? 2 : 1
+  const rows = Math.ceil(ids.length / cols)
+  const padX = Math.max(120, width * 0.2)
+  const padY = Math.max(90, height * 0.2)
+  ids.forEach((id, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const x =
+      cols === 1
+        ? width / 2
+        : padX + (col / (cols - 1)) * (width - padX * 2)
+    const y = padY + (row / Math.max(1, rows - 1)) * (height - padY * 2)
+    centers.set(id, { x, y })
+  })
+  return centers
+}
+
+// Runs the force model to completion in one synchronous pass (no animation)
+// and returns nodes that are already settled — the graph renders fixed.
+function settleLayout(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  width: number,
+  height: number
+): GraphNode[] {
+  if (nodes.length === 0) return nodes
+
+  const work = nodes.map((n) => ({ ...n }))
+  const nodeIdx = new Map(work.map((n, i) => [n.id, i]))
+  const centers = computeCenters(
+    Array.from(new Set(work.map((n) => n.projectId))),
+    width,
+    height
+  )
+
+  const edgePairs: Array<[number, number]> = []
+  for (const e of edges) {
+    const s = nodeIdx.get(e.source)
+    const t = nodeIdx.get(e.target)
+    if (s !== undefined && t !== undefined && s !== t) edgePairs.push([s, t])
+  }
+
+  for (let iter = 0; iter < 300; iter++) {
+    let maxMove = 0
+    for (let i = 0; i < work.length; i++) {
+      const node = work[i]
+      const gc = centers.get(node.projectId)
+      if (gc) {
+        node.vx += (gc.x - node.x) * 0.006
+        node.vy += (gc.y - node.y) * 0.006
+      }
+      for (let j = 0; j < work.length; j++) {
+        if (i === j) continue
+        const other = work[j]
+        const dx = node.x - other.x
+        const dy = node.y - other.y
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1
+        const force = 1800 / (dist * dist)
+        node.vx += (dx / dist) * force
+        node.vy += (dy / dist) * force
+      }
+    }
+    for (const [si, ti] of edgePairs) {
+      const node = work[si]
+      const other = work[ti]
+      const dx = other.x - node.x
+      const dy = other.y - node.y
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+      const force = (dist - 100) * 0.005
+      node.vx += (dx / dist) * force
+      node.vy += (dy / dist) * force
+    }
+    for (let i = 0; i < work.length; i++) {
+      const node = work[i]
+      node.vx *= 0.9
+      node.vy *= 0.9
+      node.x += node.vx
+      node.y += node.vy
+      node.x = Math.max(40, Math.min(width - 40, node.x))
+      node.y = Math.max(40, Math.min(height - 40, node.y))
+      const move = Math.abs(node.vx) + Math.abs(node.vy)
+      if (move > maxMove) maxMove = move
+    }
+    if (maxMove < 0.03) break
+  }
+  return work.map((n) => ({ ...n, vx: 0, vy: 0 }))
+}
+
 export default function GraphPage() {
   const [nodes, setNodes] = useState<GraphNode[]>([])
   const [edges, setEdges] = useState<GraphEdge[]>([])
@@ -107,18 +201,28 @@ export default function GraphPage() {
         }
         const keptIds = new Set(kept.map((n) => n.id))
 
-        const allNodes: GraphNode[] = kept.map((b) => ({
-          id: b.id,
-          title: b.title,
-          status: b.status,
-          severity: b.severity,
-          projectId: b.project_id,
-          projectName: b.project_name,
-          x: Math.random() * 800 + 50,
-          y: Math.random() * 400 + 50,
-          vx: 0,
-          vy: 0,
-        }))
+        // Place every bug near its project's cluster, then settle the whole
+        // layout synchronously — the graph paints already-still.
+        const centers = computeCenters(
+          Array.from(new Set(kept.map((n) => n.project_id))),
+          dimensions.width,
+          dimensions.height
+        )
+        const allNodes: GraphNode[] = kept.map((b) => {
+          const c = centers.get(b.project_id)
+          return {
+            id: b.id,
+            title: b.title,
+            status: b.status,
+            severity: b.severity,
+            projectId: b.project_id,
+            projectName: b.project_name,
+            x: (c?.x ?? 450) + (Math.random() - 0.5) * 90,
+            y: (c?.y ?? 260) + (Math.random() - 0.5) * 90,
+            vx: 0,
+            vy: 0,
+          }
+        })
 
         const allEdges: GraphEdge[] = (graph.edges || [])
           .filter(
@@ -133,7 +237,7 @@ export default function GraphPage() {
             type: e.relationship_type as GraphEdge['type'],
           }))
 
-        setNodes(allNodes)
+        setNodes(settleLayout(allNodes, allEdges, dimensions.width, dimensions.height))
         setEdges(allEdges)
       } catch {
         // Silent fail
@@ -142,109 +246,24 @@ export default function GraphPage() {
       }
     }
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Cluster centers — one per project, laid out on a simple grid so the
-  // projects read as separate, labelled groups.
-  const groupCenters = useMemo(() => {
-    const ids = Array.from(new Set(nodes.map((n) => n.projectId)))
-    if (ids.length === 0) return new Map<string, { x: number; y: number }>()
+  // Stable key of the projects shown (node positions change, ids don't) — used
+  // to re-layout once when a project is added/removed, without re-triggering on
+  // every node tick.
+  const projectIdsKey = useMemo(
+    () => Array.from(new Set(nodes.map((n) => n.projectId))).sort().join('|'),
+    [nodes]
+  )
 
-    const cols = ids.length > 4 ? 3 : ids.length > 1 ? 2 : 1
-    const rows = Math.ceil(ids.length / cols)
-    const padX = Math.max(120, dimensions.width * 0.2)
-    const padY = Math.max(90, dimensions.height * 0.2)
-    const centers = new Map<string, { x: number; y: number }>()
-    ids.forEach((id, i) => {
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      const x =
-        cols === 1
-          ? dimensions.width / 2
-          : padX + (col / (cols - 1)) * (dimensions.width - padX * 2)
-      const y = padY + (row / Math.max(1, rows - 1)) * (dimensions.height - padY * 2)
-      centers.set(id, { x, y })
-    })
-    return centers
-  }, [nodes, dimensions])
-
-  // Simple force simulation. Each bug is pulled toward its project's cluster,
-  // so groups stay together while edges connect the dependency pairs.
+  // Static (re)layout: only re-runs when the canvas size or the set of
+  // projects changes. No animation — nodes stay exactly where they settle.
   useEffect(() => {
     if (nodes.length === 0) return
-
-    let frameId: number
-    const currentNodes = nodes.map((n) => ({ ...n }))
-    const nodeIdx = new Map(currentNodes.map((n, i) => [n.id, i]))
-
-    const edgePairs: number[][] = []
-    for (const e of edges) {
-      const s = nodeIdx.get(e.source)
-      const t = nodeIdx.get(e.target)
-      if (s !== undefined && t !== undefined && s !== t) edgePairs.push([s, t])
-    }
-
-    const { width, height } = dimensions
-    const centers = new Map<string, { x: number; y: number }>(groupCenters)
-
-    let frameCount = 0
-    let settledFrames = 0
-    function runFrames() {
-      if (frameCount > 90 || settledFrames > 15) return
-      frameCount++
-
-      for (let i = 0; i < currentNodes.length; i++) {
-        const node = currentNodes[i]
-        const gc = centers.get(node.projectId)
-        if (gc) {
-          node.vx += (gc.x - node.x) * 0.006
-          node.vy += (gc.y - node.y) * 0.006
-        }
-        for (let j = 0; j < currentNodes.length; j++) {
-          if (i === j) continue
-          const other = currentNodes[j]
-          const dx = node.x - other.x
-          const dy = node.y - other.y
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1
-          const force = 1800 / (dist * dist)
-          node.vx += (dx / dist) * force
-          node.vy += (dy / dist) * force
-        }
-      }
-
-      for (const [si, ti] of edgePairs) {
-        const node = currentNodes[si]
-        const other = currentNodes[ti]
-        const dx = other.x - node.x
-        const dy = other.y - node.y
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const force = (dist - 100) * 0.005
-        node.vx += (dx / dist) * force
-        node.vy += (dy / dist) * force
-      }
-
-      let maxMove = 0
-      for (let i = 0; i < currentNodes.length; i++) {
-        const node = currentNodes[i]
-        node.vx *= 0.9
-        node.vy *= 0.9
-        node.x += node.vx
-        node.y += node.vy
-        node.x = Math.max(40, Math.min(width - 40, node.x))
-        node.y = Math.max(40, Math.min(height - 40, node.y))
-        const move = Math.abs(node.vx) + Math.abs(node.vy)
-        if (move > maxMove) maxMove = move
-      }
-      settledFrames = maxMove < 0.05 ? settledFrames + 1 : 0
-
-      setNodes(currentNodes.map((n) => ({ ...n })))
-      frameId = requestAnimationFrame(runFrames)
-    }
-
-    frameId = requestAnimationFrame(runFrames)
-    return () => cancelAnimationFrame(frameId)
+    setNodes(settleLayout(nodes, edges, dimensions.width, dimensions.height))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length, edges.length, dimensions, groupCenters])
+  }, [dimensions.width, dimensions.height, projectIdsKey])
 
   const handleNodeClick = useCallback((id: string) => {
     setSelectedNode((prev) => (prev === id ? null : id))

@@ -1,6 +1,31 @@
 import { supabase } from './supabase'
 import { API_URL } from './config'
 
+// Tiny client-side cache so frequently revisited views (graph, projects)
+// render instantly instead of re-fetching on every navigation. Mutations
+// that affect a resource invalidate its entry.
+const cache = new Map<string, { at: number; value: unknown }>()
+const CACHE_TTL_MS = 30_000
+
+function cached(path: string) {
+  const hit = cache.get(path)
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return Promise.resolve(hit.value)
+  return authFetch(path).then((v) => {
+    cache.set(path, { at: Date.now(), value: v })
+    return v
+  })
+}
+
+export function invalidateCache(pathPrefix?: string) {
+  if (!pathPrefix) {
+    cache.clear()
+    return
+  }
+  for (const key of Array.from(cache.keys())) {
+    if (key.startsWith(pathPrefix)) cache.delete(key)
+  }
+}
+
 async function authFetch(path: string, options?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch(`${API_URL}${path}`, {
@@ -21,14 +46,17 @@ async function authFetch(path: string, options?: RequestInit) {
 
 export const api = {
   // ── Projects ──
-  getProjects: () => authFetch('/api/projects'),
+  getProjects: () => cached('/api/projects'),
   createProject: (data: Record<string, unknown>) =>
-    authFetch('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
+    authFetch('/api/projects', { method: 'POST', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/projects'); return v }),
   getProject: (projectId: string) => authFetch(`/api/projects/${projectId}`),
   updateProject: (projectId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/projects/${projectId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    authFetch(`/api/projects/${projectId}`, { method: 'PUT', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/projects'); return v }),
   deleteProject: (projectId: string) =>
-    authFetch(`/api/projects/${projectId}`, { method: 'DELETE' }),
+    authFetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      .then((v) => { invalidateCache('/api/projects'); return v }),
   getProjectStats: (projectId: string) => authFetch(`/api/projects/${projectId}/stats`),
 
   // ── Bugs ──
@@ -38,15 +66,19 @@ export const api = {
     return authFetch(`/api/projects/${projectId}/bugs${qs}`)
   },
   createBug: (projectId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/projects/${projectId}/bugs`, { method: 'POST', body: JSON.stringify(data) }),
+    authFetch(`/api/projects/${projectId}/bugs`, { method: 'POST', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/graph'); invalidateCache('/api/dashboard'); return v }),
   getBug: (projectId: string, bugId: string) =>
     authFetch(`/api/projects/${projectId}/bugs/${bugId}`),
   updateBug: (projectId: string, bugId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/projects/${projectId}/bugs/${bugId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    authFetch(`/api/projects/${projectId}/bugs/${bugId}`, { method: 'PUT', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/graph'); invalidateCache('/api/dashboard'); return v }),
   changeBugStatus: (projectId: string, bugId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/projects/${projectId}/bugs/${bugId}/status`, { method: 'PATCH', body: JSON.stringify(data) }),
+    authFetch(`/api/projects/${projectId}/bugs/${bugId}/status`, { method: 'PATCH', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/graph'); invalidateCache('/api/dashboard'); return v }),
   assignBug: (projectId: string, bugId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/projects/${projectId}/bugs/${bugId}/assign`, { method: 'PATCH', body: JSON.stringify(data) }),
+    authFetch(`/api/projects/${projectId}/bugs/${bugId}/assign`, { method: 'PATCH', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/graph'); invalidateCache('/api/dashboard'); return v }),
   searchBugs: (query: string) => authFetch(`/api/bugs/search?q=${encodeURIComponent(query)}`),
 
   // ── Comments ──
@@ -79,12 +111,14 @@ export const api = {
   // ── Relationships ──
   getRelationships: (bugId: string) => authFetch(`/api/bugs/${bugId}/relationships`),
   addRelationship: (bugId: string, data: Record<string, unknown>) =>
-    authFetch(`/api/bugs/${bugId}/relationships`, { method: 'POST', body: JSON.stringify(data) }),
+    authFetch(`/api/bugs/${bugId}/relationships`, { method: 'POST', body: JSON.stringify(data) })
+      .then((v) => { invalidateCache('/api/graph'); return v }),
   deleteRelationship: (bugId: string, relId: string) =>
-    authFetch(`/api/bugs/${bugId}/relationships/${relId}`, { method: 'DELETE' }),
+    authFetch(`/api/bugs/${bugId}/relationships/${relId}`, { method: 'DELETE' })
+      .then((v) => { invalidateCache('/api/graph'); return v }),
 
   // ── Graph (single round trip: all visible nodes + edges) ──
-  getGraph: () => authFetch('/api/graph'),
+  getGraph: () => cached('/api/graph'),
 
   // ── Dashboard ──
   getDashboardStats: () => authFetch('/api/dashboard/stats'),

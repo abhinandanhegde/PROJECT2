@@ -12,6 +12,33 @@ interface SeverityDist {
   color: string
 }
 
+const SEV_COLORS: Record<string, string> = {
+  BLOCKER: '#dc2626',
+  CRITICAL: '#ef4444',
+  MAJOR: '#f97316',
+  NORMAL: '#3b82f6',
+  MINOR: '#6b7280',
+  TRIVIAL: '#a1a1aa',
+}
+
+// SVG arc path for a donut segment (start at top, clockwise).
+function donutArc(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const start = (Math.PI / 180) * startAngle
+  const end = (Math.PI / 180) * endAngle
+  const x1 = cx + r * Math.cos(start)
+  const y1 = cy + r * Math.sin(start)
+  const x2 = cx + r * Math.cos(end)
+  const y2 = cy + r * Math.sin(end)
+  const large = endAngle - startAngle > 180 ? 1 : 0
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`
+}
+
 export default function AnalyticsPage() {
   const [stats, setStats] = useState({
     totalReported: 0,
@@ -56,18 +83,23 @@ export default function AnalyticsPage() {
   // Compute severity distribution from real data
   const totalSev = Object.values(stats.bugsBySeverity).reduce((a, b) => a + b, 0) || 1
   const severityDistribution: SeverityDist[] = [
-    { name: 'BLOCKER', count: stats.bugsBySeverity['BLOCKER'] || 0, pct: Math.round(((stats.bugsBySeverity['BLOCKER'] || 0) / totalSev) * 100), color: 'bg-red-600' },
-    { name: 'CRITICAL', count: stats.bugsBySeverity['CRITICAL'] || 0, pct: Math.round(((stats.bugsBySeverity['CRITICAL'] || 0) / totalSev) * 100), color: 'bg-red-400' },
-    { name: 'MAJOR', count: stats.bugsBySeverity['MAJOR'] || 0, pct: Math.round(((stats.bugsBySeverity['MAJOR'] || 0) / totalSev) * 100), color: 'bg-orange-500' },
-    { name: 'NORMAL', count: stats.bugsBySeverity['NORMAL'] || 0, pct: Math.round(((stats.bugsBySeverity['NORMAL'] || 0) / totalSev) * 100), color: 'bg-blue-400' },
-    { name: 'MINOR', count: stats.bugsBySeverity['MINOR'] || 0, pct: Math.round(((stats.bugsBySeverity['MINOR'] || 0) / totalSev) * 100), color: 'bg-stone-400' },
-    { name: 'TRIVIAL', count: stats.bugsBySeverity['TRIVIAL'] || 0, pct: Math.round(((stats.bugsBySeverity['TRIVIAL'] || 0) / totalSev) * 100), color: 'bg-stone-300' },
+    { name: 'BLOCKER', count: stats.bugsBySeverity['BLOCKER'] || 0, pct: Math.round(((stats.bugsBySeverity['BLOCKER'] || 0) / totalSev) * 100), color: SEV_COLORS['BLOCKER'] },
+    { name: 'CRITICAL', count: stats.bugsBySeverity['CRITICAL'] || 0, pct: Math.round(((stats.bugsBySeverity['CRITICAL'] || 0) / totalSev) * 100), color: SEV_COLORS['CRITICAL'] },
+    { name: 'MAJOR', count: stats.bugsBySeverity['MAJOR'] || 0, pct: Math.round(((stats.bugsBySeverity['MAJOR'] || 0) / totalSev) * 100), color: SEV_COLORS['MAJOR'] },
+    { name: 'NORMAL', count: stats.bugsBySeverity['NORMAL'] || 0, pct: Math.round(((stats.bugsBySeverity['NORMAL'] || 0) / totalSev) * 100), color: SEV_COLORS['NORMAL'] },
+    { name: 'MINOR', count: stats.bugsBySeverity['MINOR'] || 0, pct: Math.round(((stats.bugsBySeverity['MINOR'] || 0) / totalSev) * 100), color: SEV_COLORS['MINOR'] },
+    { name: 'TRIVIAL', count: stats.bugsBySeverity['TRIVIAL'] || 0, pct: Math.round(((stats.bugsBySeverity['TRIVIAL'] || 0) / totalSev) * 100), color: SEV_COLORS['TRIVIAL'] },
   ]
 
-  // Donut chart segments based on real severity data
+  // Real donut segments (arc paths). A 2° inset per segment keeps clean gaps.
+  const GAP = 2
   const donutSegments = severityDistribution
     .filter((s) => s.count > 0)
-    .map((s) => ({ ...s, angle: (s.pct / 100) * 360 }))
+    .map((s, i, arr) => {
+      const startAngle = -90 + (arr.slice(0, i).reduce((a, x) => a + x.pct, 0) / 100) * 360
+      const endAngle = startAngle + (s.pct / 100) * 360
+      return { ...s, startAngle: startAngle + GAP, endAngle: endAngle - GAP }
+    })
 
   // Activity by action type
   const actionCounts: Record<string, number> = {}
@@ -125,58 +157,66 @@ export default function AnalyticsPage() {
         {/* Donut Chart */}
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm">
           <h2 className="font-bold text-base text-stone-900 dark:text-white mb-4">Severity Overview</h2>
-          <div className="flex items-center justify-center gap-8">
-            <div className="relative w-40 h-40 shrink-0">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                <path
-                  className="text-stone-100 dark:text-stone-800"
-                  strokeWidth="3.8"
-                  stroke="currentColor"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                {(() => {
-                  let offset = 0
-                  return donutSegments.map((seg) => {
-                    const dashArray = `${seg.pct}, 100`
-                    const dashOffset = -offset
-                    offset += seg.pct
-                    return (
-                      <path
-                        key={seg.name}
-                        className={seg.color}
-                        strokeDasharray={dashArray}
-                        strokeDashoffset={dashOffset}
-                        strokeWidth="3.8"
-                        strokeLinecap="round"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                    )
-                  })
-                })()}
+          <div className="flex items-center justify-center gap-10">
+            <div className="relative w-44 h-44 shrink-0">
+              <svg className="w-full h-full" viewBox="0 0 36 36">
+                {donutSegments.length === 0 ? (
+                  <circle
+                    cx="18"
+                    cy="18"
+                    r="15.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3.8"
+                    className="text-stone-100 dark:text-stone-800"
+                  />
+                ) : (
+                  donutSegments.map((seg) => (
+                    <path
+                      key={seg.name}
+                      d={donutArc(
+                        18,
+                        18,
+                        15.5,
+                        seg.startAngle,
+                        seg.endAngle
+                      )}
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth="3.8"
+                      strokeLinecap="butt"
+                    />
+                  ))
+                )}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-xl font-bold text-stone-900 dark:text-white leading-none">
-                  {stats.totalReported}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                <span className="text-2xl font-bold text-stone-900 dark:text-white leading-none">
+                  {Object.values(stats.bugsBySeverity).reduce((a, b) => a + b, 0)}
                 </span>
-                <span className="text-xs text-stone-400 font-medium mt-0.5">
+                <span className="text-xs text-stone-400 font-medium mt-1">
                   Total Bugs
                 </span>
               </div>
             </div>
 
-            <div className="space-y-2 text-xs flex-1">
+            <div className="min-w-[220px] flex-1 space-y-3">
               {severityDistribution.filter((s) => s.count > 0).map((s) => (
-                <div key={s.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${s.color}`} />
-                    <span className="text-stone-600 dark:text-stone-300">{s.name}</span>
+                <div key={s.name}>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                      <span className="font-medium text-stone-700 dark:text-stone-300">{s.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-stone-900 dark:text-white">{s.count}</span>
+                      <span className="text-stone-400 w-9 text-right">{s.pct}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-stone-900 dark:text-white">{s.count}</span>
-                    <span className="text-stone-400">{s.pct}%</span>
+                  <div className="mt-1 h-1.5 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${s.pct}%`, backgroundColor: s.color }}
+                    />
                   </div>
                 </div>
               ))}

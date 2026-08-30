@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import { ToastProvider } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 
 export default function DashboardLayout({
   children,
@@ -25,6 +26,17 @@ export default function DashboardLayout({
       }
     })
   }, [router])
+
+  // Warm the shared API cache while the user reads the landing page, so the
+  // Graph and Projects views render instantly on first click.
+  useEffect(() => {
+    if (!authChecked) return
+    const t = setTimeout(() => {
+      api.getGraph().catch(() => {})
+      api.getProjects().catch(() => {})
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [authChecked])
 
   if (!authChecked) {
     return (

@@ -304,9 +304,6 @@ export default function DashboardPage() {
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
                   {triageCount}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400">
-                  AI-powered
-                </span>
               </div>
               <Link
                 href="/bugs?status=NEW"
