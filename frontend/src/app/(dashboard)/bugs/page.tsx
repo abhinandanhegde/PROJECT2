@@ -33,7 +33,6 @@ function BugsContent() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [triageItems, setTriageItems] = useState<EnrichedTriageItem[]>([])
   const [triageLoading, setTriageLoading] = useState(false)
-  const [triageView, setTriageView] = useState(false)
 
   // Map bug ID → triage result for inline display in the bugs table
   const triageMap = useMemo(() => {
@@ -136,18 +135,8 @@ const visibleBugs = useMemo(() => {
     } else if (tabParam === 'reported' && currentUserId) {
       filtered = bugs.filter((b) => b.reporter_id === currentUserId)
     }
-    // Triage View: only bugs with triage data, sorted by confidence desc
-    if (triageView) {
-      filtered = filtered
-        .filter((b) => triageMap.has(b.id))
-        .sort((a, b) => {
-          const ta = triageMap.get(a.id)
-          const tb = triageMap.get(b.id)
-          return (tb?.confidence || 0) - (ta?.confidence || 0)
-        })
-    }
     return filtered
-  }, [bugs, tabParam, currentUserId, triageView, triageMap])
+  }, [bugs, tabParam, currentUserId])
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -209,27 +198,13 @@ const visibleBugs = useMemo(() => {
             Browse, filter, and triage issues across your projects
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => setTriageView(!triageView)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer ${
-              triageView
-                ? 'bg-orange-500 text-white shadow-orange-500/20'
-                : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 border border-stone-200 dark:border-stone-700'
-            }`}
-          >
-            <span className="text-sm">🧠</span>
-            <span>{triageView ? 'Showing Triage' : 'Triage View'}</span>
-            {triageView && <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-bold">{triageMap.size}</span>}
-          </button>
-          <Link
-            href="/bugs/new"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-sm shadow-orange-500/20 transition-all cursor-pointer"
-          >
-            <span className="text-base leading-none">+</span>
-            <span>New Bug</span>
-          </Link>
-        </div>
+        <Link
+          href="/bugs/new"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-semibold shadow-sm shadow-orange-500/20 transition-all self-start sm:self-auto cursor-pointer"
+        >
+          <span className="text-base leading-none">+</span>
+          <span>New Bug</span>
+        </Link>
       </div>
 
       {/* Tabs */}
