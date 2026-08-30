@@ -289,8 +289,11 @@ const visibleBugs = useMemo(() => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <h2 className="font-bold text-base text-stone-900 dark:text-white">
-                  Smart Triage Queue
+                  Instant Triage Queue
                 </h2>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400">
+                  deterministic
+                </span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
                   {triageItems.length}
                 </span>
