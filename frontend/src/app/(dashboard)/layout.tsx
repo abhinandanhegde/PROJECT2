@@ -8,6 +8,11 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 
+// Vercel injects the deployed commit SHA; empty in local dev.
+const BUILD_SHA = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA
+  ? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.slice(0, 7)
+  : ''
+
 export default function DashboardLayout({
   children,
 }: {
@@ -61,6 +66,11 @@ export default function DashboardLayout({
           <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
             {children}
           </main>
+          <footer className="pb-4 text-center">
+            <span className="text-[11px] font-mono text-stone-400">
+              build {BUILD_SHA}
+            </span>
+          </footer>
         </div>
       </div>
     </ToastProvider>
