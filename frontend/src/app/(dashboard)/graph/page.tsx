@@ -122,7 +122,7 @@ function settleLayout(
         const dx = node.x - other.x
         const dy = node.y - other.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const force = 1800 / (dist * dist)
+        const force = 2200 / (dist * dist)
         node.vx += (dx / dist) * force
         node.vy += (dy / dist) * force
       }
@@ -149,6 +149,40 @@ function settleLayout(
       if (move > maxMove) maxMove = move
     }
     if (maxMove < 0.03) break
+  }
+
+  // Hard de-collision pass: guarantee every node is clearly separated so the
+  // discs and their labels never overlap, regardless of cluster density.
+  const MIN_DIST = 42
+  for (let sweep = 0; sweep < 24; sweep++) {
+    let moved = false
+    for (let i = 0; i < work.length; i++) {
+      for (let j = i + 1; j < work.length; j++) {
+        const a = work[i]
+        const b = work[j]
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > MIN_DIST) continue
+        if (dist < 0.001) {
+          a.x -= 0.5
+          b.x += 0.5
+          moved = true
+          continue
+        }
+        const push = (MIN_DIST - dist) / 2
+        a.x -= (dx / dist) * push
+        a.y -= (dy / dist) * push
+        b.x += (dx / dist) * push
+        b.y += (dy / dist) * push
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  for (const n of work) {
+    n.x = Math.max(40, Math.min(width - 40, n.x))
+    n.y = Math.max(40, Math.min(height - 40, n.y))
   }
   return work.map((n) => ({ ...n, vx: 0, vy: 0 }))
 }
@@ -282,8 +316,8 @@ export default function GraphPage() {
       c.n++
       acc.set(n.projectId, c)
     }
-    const out: { id: string; x: number; y: number; name: string }[] = []
-    for (const [id, c] of acc) out.push({ id, x: c.x / c.n, y: c.y / c.n, name: c.name })
+    const out: { id: string; x: number; y: number; name: string; n: number }[] = []
+    for (const [id, c] of acc) out.push({ id, x: c.x / c.n, y: c.y / c.n, name: c.name, n: c.n })
     return out
   }, [nodes])
 
@@ -366,6 +400,9 @@ export default function GraphPage() {
             viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
           >
             <defs>
+              <filter id="node-shadow" x="-60%" y="-60%" width="220%" height="220%">
+                <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodColor="#000" floodOpacity="0.25" />
+              </filter>
               <marker id="arrow-blocks" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                 <path d="M0,0 L8,3 L0,6" fill="#ef4444" />
               </marker>
@@ -381,16 +418,16 @@ export default function GraphPage() {
             {projectLabels.map((p) => (
               <g key={p.id}>
                 <rect
-                  x={p.x - 90}
+                  x={p.x - 100}
                   y={p.y - 42}
-                  width={180}
+                  width={200}
                   height={18}
                   rx={9}
                   fill="#f5f5f4"
-                  opacity={0.9}
+                  opacity={0.95}
                 />
                 <text
-                  x={p.x}
+                  x={p.x + 8}
                   y={p.y - 29}
                   textAnchor="middle"
                   fontSize="10"
@@ -398,6 +435,17 @@ export default function GraphPage() {
                   fill="#57534e"
                 >
                   {p.name}
+                </text>
+                <circle cx={p.x - 90} cy={p.y - 33} r={6} fill="#d6d3d1" />
+                <text
+                  x={p.x - 90}
+                  y={p.y - 30.5}
+                  textAnchor="middle"
+                  fontSize="7"
+                  fontWeight="800"
+                  fill="#44403c"
+                >
+                  {p.n}
                 </text>
               </g>
             ))}
@@ -414,8 +462,8 @@ export default function GraphPage() {
               const dx = target.x - source.x
               const dy = target.y - source.y
               const dist = Math.sqrt(dx * dx + dy * dy) || 1
-              const endX = target.x - (dx / dist) * 14
-              const endY = target.y - (dy / dist) * 14
+              const endX = target.x - (dx / dist) * 18
+              const endY = target.y - (dy / dist) * 18
 
               return (
                 <line
@@ -446,30 +494,34 @@ export default function GraphPage() {
                   className="cursor-pointer"
                   style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
                 >
-                  <title>{`${shortBugId(node.id)} — ${node.title}`}</title>
+                  <title>{`${shortBugId(node.id)} — ${node.title} (${node.status.replace('_', ' ')})`}</title>
                   {isSelected && (
-                    <circle cx={node.x} cy={node.y} r={20} fill={color} opacity={0.15} />
+                    <circle cx={node.x} cy={node.y} r={19} fill={color} opacity={0.18} />
                   )}
                   <circle
                     cx={node.x}
                     cy={node.y}
-                    r={isSelected ? 15 : 12}
+                    r={isSelected ? 18 : 15}
                     fill={color}
-                    stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.6)'}
-                    strokeWidth={isSelected ? 2.5 : 1.5}
+                    stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.85)'}
+                    strokeWidth={isSelected ? 2.75 : 1.75}
+                    filter="url(#node-shadow)"
                     style={{ transition: 'r 0.2s, stroke 0.2s' }}
                   />
                   <text
                     x={node.x}
-                    y={node.y + 1}
+                    y={node.y + 0.5}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize="8"
-                    fontWeight="700"
+                    fontSize="8.5"
+                    fontWeight="800"
                     fill="white"
-                    style={{ pointerEvents: 'none' }}
+                    paintOrder="stroke"
+                    stroke="rgba(0,0,0,0.4)"
+                    strokeWidth={2}
+                    style={{ pointerEvents: 'none', fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {shortBugId(node.id)}
+                    {node.id.slice(0, 6)}
                   </text>
                 </g>
               )

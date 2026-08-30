@@ -163,11 +163,11 @@ export interface DashboardStats {
 
 /**
  * Display a short version of a bug ID.
- * UUID → first 8 chars (e.g. "a1b2c3d4")
+ * UUID → "#" + first 8 chars (e.g. "#a1b2c3d4")
  * "BUG-184" → "BUG-184"
  */
 export function shortBugId(id: string): string {
   if (id.startsWith('BUG-')) return id
-  if (id.length > 8) return id.slice(0, 8)
-  return id
+  if (id.length > 8) return `#${id.slice(0, 8)}`
+  return `#${id}`
 }
