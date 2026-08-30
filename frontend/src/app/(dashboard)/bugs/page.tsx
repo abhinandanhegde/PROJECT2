@@ -34,6 +34,15 @@ function BugsContent() {
   const [triageItems, setTriageItems] = useState<EnrichedTriageItem[]>([])
   const [triageLoading, setTriageLoading] = useState(false)
 
+  // Map bug ID → triage result for inline display in the bugs table
+  const triageMap = useMemo(() => {
+    const map = new Map<string, TriageResult>()
+    triageItems.forEach((item) => {
+      if (item.triage) map.set(item.bug.id, item.triage)
+    })
+    return map
+  }, [triageItems])
+
   // Get current user ID
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -175,6 +184,7 @@ const visibleBugs = useMemo(() => {
       default: return 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
     }
   }
+
 
   return (
     <div className="space-y-6">
@@ -341,6 +351,13 @@ const visibleBugs = useMemo(() => {
                       <div className="text-xs font-medium text-stone-900 dark:text-white truncate mt-0.5">
                         <Link href={`/bugs/${item.bug.id}`} className="hover:underline">{item.bug.title}</Link>
                       </div>
+                      {/* Show triage reasoning chain inline */}
+                      {item.triage && item.triage.reasons.length > 0 && (
+                        <div className="text-[10px] text-stone-400 dark:text-stone-500 mt-1 truncate" title={item.triage.reasons.join(' · ')}>
+                          ✓ {item.triage.reasons[0]}
+                          {item.triage.reasons.length > 1 && <span className="text-stone-300 dark:text-stone-600"> +{item.triage.reasons.length - 1} more</span>}
+                        </div>
+                      )}
                     </div>
 
                     <div className="col-span-2 text-center">
@@ -447,87 +464,129 @@ const visibleBugs = useMemo(() => {
                   <th className="py-3.5 px-4">Severity</th>
                   <th className="py-3.5 px-4">Priority</th>
                   <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4">Triage</th>
                   <th className="py-3.5 px-4">Assignee</th>
                   <th className="py-3.5 px-5 text-right">Created</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eee9e2] dark:divide-stone-800">
-                {visibleBugs.map((bug) => (
-                  <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
-                    <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
-                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{bugRef(bug)}</Link>
-                    </td>
-                    <td className="py-3.5 px-4 font-medium text-stone-900 dark:text-white max-w-xs truncate">
-                      <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.title}</Link>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                          bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
-                            ? 'bg-red-500'
-                            : bug.severity === 'MAJOR'
-                            ? 'bg-orange-500'
-                            : bug.severity === 'NORMAL'
-                            ? 'bg-blue-500'
-                            : 'bg-stone-400'
-                        }`} />
-                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
-                    </td>
-                    <td className="py-3.5 px-4 text-stone-600 dark:text-stone-400">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-600 dark:text-stone-300">
-                          {(bug.assignee_name || 'U').charAt(0)}
+                {visibleBugs.map((bug) => {
+                  const triage = triageMap.get(bug.id)
+                  return (
+                    <tr key={bug.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors cursor-pointer">
+                      <td className="py-3.5 px-5 font-mono font-bold text-orange-600 dark:text-orange-400">
+                        <Link href={`/bugs/${bug.id}`} className="hover:underline">{bugRef(bug)}</Link>
+                      </td>
+                      <td className="py-3.5 px-4 font-medium text-stone-900 dark:text-white max-w-xs truncate">
+                        <Link href={`/bugs/${bug.id}`} className="hover:underline">{bug.title}</Link>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
+                              ? 'bg-red-500'
+                              : bug.severity === 'MAJOR'
+                              ? 'bg-orange-500'
+                              : bug.severity === 'NORMAL'
+                              ? 'bg-blue-500'
+                              : 'bg-stone-400'
+                          }`} />
+                          <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
                         </div>
-                        <span>{bug.assignee_name || 'Unassigned'}</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-5 text-right text-stone-400 dark:text-stone-500 whitespace-nowrap">
-                      {new Date(bug.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {triage ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                              triage.suggested_severity === 'BLOCKER' || triage.suggested_severity === 'CRITICAL'
+                                ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                                : triage.suggested_severity === 'MAJOR'
+                                ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
+                                : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                            }`}>
+                              {triage.suggested_severity}
+                            </span>
+                            <span className="text-[10px] text-stone-400 dark:text-stone-500">
+                              {Math.round(triage.confidence * 100)}% · {triage.reasons[0]?.slice(0, 30) || '—'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-stone-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-stone-600 dark:text-stone-400">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-600 dark:text-stone-300">
+                            {(bug.assignee_name || 'U').charAt(0)}
+                          </div>
+                          <span>{bug.assignee_name || 'Unassigned'}</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-5 text-right text-stone-400 dark:text-stone-500 whitespace-nowrap">
+                        {new Date(bug.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Cards */}
           <div className="md:hidden space-y-3">
-            {visibleBugs.map((bug) => (
-              <div key={bug.id} className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
-                    <Link href={`/bugs/${bug.id}`}>{bugRef(bug)}</Link>
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
-                </div>
-                <div className="text-sm font-semibold text-stone-900 dark:text-white">
-                  <Link href={`/bugs/${bug.id}`}>{bug.title}</Link>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${
-                      bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
-                        ? 'bg-red-500'
-                        : bug.severity === 'MAJOR'
-                        ? 'bg-orange-500'
-                        : bug.severity === 'NORMAL'
-                        ? 'bg-blue-500'
-                        : 'bg-stone-400'
-                    }`} />
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+            {visibleBugs.map((bug) => {
+              const triage = triageMap.get(bug.id)
+              return (
+                <div key={bug.id} className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-[#eee9e2] dark:border-stone-800 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
+                      <Link href={`/bugs/${bug.id}`}>{bugRef(bug)}</Link>
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(bug.status)}`}>{bug.status}</span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
-                  <span className="text-xs text-stone-500 dark:text-stone-400 ml-auto">{bug.assignee_name || 'Unassigned'}</span>
+                  <div className="text-sm font-semibold text-stone-900 dark:text-white">
+                    <Link href={`/bugs/${bug.id}`}>{bug.title}</Link>
+                  </div>
+                  {/* Show triage suggestion inline on mobile */}
+                  {triage && (
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className={`px-1.5 py-0.5 rounded font-bold ${
+                        triage.suggested_severity === 'BLOCKER' || triage.suggested_severity === 'CRITICAL'
+                          ? 'bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                          : triage.suggested_severity === 'MAJOR'
+                          ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400'
+                          : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
+                      }`}>
+                        Triage: {triage.suggested_severity}
+                      </span>
+                      <span className="text-stone-400 dark:text-stone-500">{Math.round(triage.confidence * 100)}% confidence</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        bug.severity === 'BLOCKER' || bug.severity === 'CRITICAL'
+                          ? 'bg-red-500'
+                          : bug.severity === 'MAJOR'
+                          ? 'bg-orange-500'
+                          : bug.severity === 'NORMAL'
+                          ? 'bg-blue-500'
+                          : 'bg-stone-400'
+                      }`} />
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityBadge(bug.severity)}`}>{bug.severity}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${getPriorityBadge(bug.priority)}`}>{bug.priority}</span>
+                    <span className="text-xs text-stone-500 dark:text-stone-400 ml-auto">{bug.assignee_name || 'Unassigned'}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
