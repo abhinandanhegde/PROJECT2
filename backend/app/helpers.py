@@ -6,6 +6,7 @@ Provides role checking, activity logging, and common query patterns.
 
 from typing import Optional
 from app.exceptions import AuthorizationError
+from app.supabase_client import get_service_role_client
 
 
 # Roles ordered from least to most privileged.
@@ -90,8 +91,12 @@ def log_activity(
 ) -> None:
     """
     Insert an entry into the activity_log table.
+
+    Uses the service-role client so audit rows are written even though there
+    is no user-context INSERT policy on activity_log.
     """
     try:
+        db = get_service_role_client()
         db.table("activity_log").insert({
             "project_id": project_id,
             "actor_id": actor_id,

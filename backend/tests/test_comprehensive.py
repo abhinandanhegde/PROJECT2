@@ -378,6 +378,9 @@ class TestSupabaseClient:
 
     def test_service_role_client_requires_env(self):
         from app.supabase_client import get_service_role_client
+        # Reset the cached singleton so the missing-env path is exercised even
+        # if an earlier test already created the service-role client.
         with patch.dict(os.environ, {"SUPABASE_URL": "", "SUPABASE_SERVICE_ROLE_KEY": ""}):
-            with pytest.raises(RuntimeError):
-                get_service_role_client()
+            with patch("app.supabase_client._service_role_client", None):
+                with pytest.raises(RuntimeError):
+                    get_service_role_client()

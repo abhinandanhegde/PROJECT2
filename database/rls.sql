@@ -266,6 +266,13 @@ CREATE POLICY "comments_delete_author_or_admin"
     )
   );
 
+-- Authors can update their own comments
+DROP POLICY IF EXISTS "comments_update_author" ON comments;
+CREATE POLICY "comments_update_author"
+  ON comments FOR UPDATE
+  TO authenticated
+  USING (author_id = auth.uid());
+
 -- ============================================================
 -- ATTACHMENTS POLICIES
 -- ============================================================

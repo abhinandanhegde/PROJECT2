@@ -23,13 +23,15 @@ export default function DashboardLayout({
   const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const timer = setTimeout(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.replace('/login')
       } else {
         setAuthChecked(true)
       }
-    })
+    }, 300)
+    return () => clearTimeout(timer)
   }, [router])
 
   // Warm the shared API cache while the user reads the landing page, so the
