@@ -1,6 +1,5 @@
 import { supabase } from './supabase'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_URL } from './config'
 
 async function authFetch(path: string, options?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession()

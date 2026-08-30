@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signIn } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { API_URL } from '@/lib/config'
 import { BugIcon } from '@/components/ui/Icons'
 
 export default function LoginPage() {
@@ -40,7 +41,6 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || 'demo@bugflow.app'
     const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo1234!'
     const demoName = process.env.NEXT_PUBLIC_DEMO_NAME || 'Demo User'
@@ -71,7 +71,7 @@ export default function LoginPage() {
         return
       }
     } catch {
-      setError('Cannot reach backend. Make sure uvicorn is running on port 8000.')
+      setError('Cannot reach backend. Make sure the backend API is running and reachable.')
       setLoading(false)
       return
     }
@@ -80,7 +80,7 @@ export default function LoginPage() {
     const { error: signInError } = await signIn(demoEmail, demoPassword)
     setLoading(false)
     if (signInError) {
-      setError('Demo login failed. Make sure the backend is running on port 8000.')
+      setError('Demo login failed. Make sure the backend API is running and reachable.')
       return
     }
     router.push('/')
