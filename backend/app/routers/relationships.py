@@ -164,7 +164,7 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
     numbers = bug_number_map(db)
     title_map = {b["id"]: b["title"] for b in bugs}
     status_map = {b["id"]: b["status"] for b in bugs}
-    blocks_count, blocked_by_count, critical_ids = compute_blocking_impact(bug_ids, edges)
+    unblocked_count, blocked_by_count, critical_path_ids, total_blocking_edges = compute_blocking_impact(bug_ids, edges)
     critical_path = [
         {
             "id": bid,
@@ -172,8 +172,9 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "title": title_map.get(bid, ""),
             "status": status_map.get(bid, ""),
         }
-        for bid in critical_ids
+        for bid in critical_path_ids
     ]
+    critical_set = set(critical_path_ids)
     nodes = [
         {
             "id": b["id"],
@@ -183,8 +184,9 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "severity": b["severity"],
             "project_id": b["project_id"],
             "project_name": project_names.get(b["project_id"], "Unknown project"),
-            "blocks_count": blocks_count.get(b["id"], 0),
+            "unblocked_count": unblocked_count.get(b["id"], 0),
             "blocked_by_count": blocked_by_count.get(b["id"], 0),
+            "is_critical": b["id"] in critical_set,
         }
         for b in bugs
     ]
@@ -194,7 +196,11 @@ async def bug_graph(auth=Depends(get_current_user_with_client)):
             "edges": edges,
             "critical_path": critical_path,
             "projects": [{"id": pid, "name": name} for pid, name in project_names.items()],
-        }
+        },
+        "impact": {
+            "critical_path_ids": critical_path_ids,
+            "total_blocking_edges": total_blocking_edges,
+        },
     }
 
 

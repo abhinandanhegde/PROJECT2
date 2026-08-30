@@ -11,7 +11,7 @@ interface GraphNode {
   title: string
   status: string
   severity: string
-  blocksCount: number
+  unblockedCount: number
   blockedByCount: number
   projectId: string
   projectName: string
@@ -33,7 +33,7 @@ interface GraphNodePayload {
   title: string
   status: string
   severity: string
-  blocks_count?: number
+  unblocked_count?: number
   blocked_by_count?: number
   project_id: string
   project_name: string
@@ -271,7 +271,7 @@ export default function GraphPage() {
             title: b.title,
             status: b.status,
             severity: b.severity,
-            blocksCount: b.blocks_count ?? 0,
+            unblockedCount: b.unblocked_count ?? 0,
             blockedByCount: b.blocked_by_count ?? 0,
             projectId: b.project_id,
             projectName: b.project_name,
@@ -365,7 +365,7 @@ const projectLabels = useMemo(() => {
   const shownProjects = new Set(nodes.map((n) => n.projectName)).size
   const criticalRoot = criticalPath[0]
   const criticalUnblocks = criticalRoot
-    ? (nodeById.get(criticalRoot.id)?.blocksCount ?? criticalPath.length - 1)
+    ? (nodeById.get(criticalRoot.id)?.unblockedCount ?? criticalPath.length - 1)
     : 0
 
   return (
@@ -522,8 +522,8 @@ const projectLabels = useMemo(() => {
               const isConnected = connectedNodeIds.has(node.id)
               const isDimmed = selectedNode && !isSelected && !isConnected
               const impact = [
-                node.blocksCount > 0
-                  ? `unblocks ${node.blocksCount} downstream bug${node.blocksCount === 1 ? '' : 's'}`
+                node.unblockedCount > 0
+                  ? `unblocks ${node.unblockedCount} downstream bug${node.unblockedCount === 1 ? '' : 's'}`
                   : '',
                 node.blockedByCount > 0
                   ? `blocked by ${node.blockedByCount} upstream bug${node.blockedByCount === 1 ? '' : 's'}`
@@ -599,11 +599,11 @@ const projectLabels = useMemo(() => {
                     View Bug →
                   </Link>
                 </div>
-                {(node.blocksCount > 0 || node.blockedByCount > 0) && (
+                {(node.unblockedCount > 0 || node.blockedByCount > 0) && (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {node.blocksCount > 0 && (
+                    {node.unblockedCount > 0 && (
                       <span className="px-2 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 font-medium">
-                        Unblocks {node.blocksCount} downstream bug{node.blocksCount === 1 ? '' : 's'}
+                        Unblocks {node.unblockedCount} downstream bug{node.unblockedCount === 1 ? '' : 's'}
                       </span>
                     )}
                     {node.blockedByCount > 0 && (
