@@ -3,13 +3,22 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
-import type { Project, Bug } from '@/lib/types'
+import type { Project } from '@/lib/types'
+
+interface ProjectStats {
+  total_bugs: number
+  open_bugs: number
+  closed_bugs: number
+  resolved_bugs: number
+  bugs_by_severity: Record<string, number>
+  bugs_by_priority: Record<string, number>
+  bugs_by_status: Record<string, number>
+  recent_activity: number
+  member_count: number
+}
 
 interface ProjectWithStats extends Project {
-  totalBugs: number
-  openBugs: number
-  resolvedBugs: number
-  memberCount: number
+  stats?: ProjectStats
 }
 
 export default function ProjectsPage() {
@@ -30,33 +39,21 @@ export default function ProjectsPage() {
       const res = await api.getProjects()
       const projs: Project[] = res?.data || []
 
-      const enriched: ProjectWithStats[] = []
-      for (const p of projs) {
-        try {
-          const [bugRes, memRes] = await Promise.allSettled([
-            api.getBugs(p.id, { per_page: '200' }),
-            api.getMembers(p.id),
-          ])
+      // Server-computed stats (single authoritative source): total/open/resolved,
+      // member count and 7-day activity straight from the database.
+      const statsRows = await Promise.all(
+        projs.map((p) =>
+          api
+            .getProjectStats(p.id)
+            .then((s) => ({ id: p.id, stats: s as ProjectStats }))
+            .catch(() => null)
+        )
+      )
+      const statsById = new Map(
+        statsRows.filter((r): r is { id: string; stats: ProjectStats } => Boolean(r)).map((r) => [r.id, r.stats])
+      )
 
-          const bugs: Bug[] = bugRes.status === 'fulfilled' ? bugRes.value?.data || [] : []
-          const members = memRes.status === 'fulfilled' ? memRes.value?.data || [] : []
-
-          const openStatuses = ['NEW', 'CONFIRMED', 'IN_PROGRESS', 'REOPENED']
-          const resolvedStatuses = ['RESOLVED', 'VERIFIED', 'CLOSED']
-
-          enriched.push({
-            ...p,
-            totalBugs: bugs.length,
-            openBugs: bugs.filter((b) => openStatuses.includes(b.status)).length,
-            resolvedBugs: bugs.filter((b) => resolvedStatuses.includes(b.status)).length,
-            memberCount: members.length,
-          })
-        } catch {
-          enriched.push({ ...p, totalBugs: 0, openBugs: 0, resolvedBugs: 0, memberCount: 0 })
-        }
-      }
-
-      setProjects(enriched)
+      setProjects(projs.map((p) => ({ ...p, stats: statsById.get(p.id) })))
     } catch {
       // Silent fail
     } finally {
@@ -175,8 +172,21 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p) => {
-            const healthPct = p.totalBugs > 0 ? Math.round((p.resolvedBugs / p.totalBugs) * 100) : 100
-            const healthColor = healthPct >= 70 ? 'text-emerald-600' : healthPct >= 40 ? 'text-amber-600' : 'text-red-600'
+            const s = p.stats
+            const total = s?.total_bugs ?? 0
+            const open = s?.open_bugs ?? 0
+            const resolved = s?.resolved_bugs ?? 0
+            const members = s?.member_count ?? 0
+            const recent = s?.recent_activity ?? 0
+            const health = total > 0 ? Math.round((resolved / total) * 100) : null
+            const healthColor =
+              health === null
+                ? 'text-stone-400'
+                : health >= 70
+                  ? 'text-emerald-600'
+                  : health >= 40
+                    ? 'text-amber-600'
+                    : 'text-red-600'
 
             return (
               <Link
@@ -194,7 +204,9 @@ export default function ProjectsPage() {
                     )}
                   </div>
                   <div className="text-right shrink-0 ml-3">
-                    <div className={`text-lg font-bold ${healthColor}`}>{healthPct}%</div>
+                    <div className={`text-lg font-bold ${healthColor}`}>
+                      {health === null ? '—' : `${health}%`}
+                    </div>
                     <div className="text-[10px] text-stone-400 uppercase tracking-wider">Health</div>
                   </div>
                 </div>
@@ -202,25 +214,27 @@ export default function ProjectsPage() {
                 {/* Stats row */}
                 <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-100 dark:border-stone-800">
                   <div className="text-center">
-                    <div className="text-sm font-bold text-stone-900 dark:text-white">{p.totalBugs}</div>
-                    <div className="text-[10px] text-stone-400">Total</div>
+                    <div className="text-sm font-bold text-stone-900 dark:text-white">{total}</div>
+                    <div className="text-[10px] text-stone-400">Issues</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-bold text-orange-600 dark:text-orange-400">{p.openBugs}</div>
+                    <div className="text-sm font-bold text-orange-600 dark:text-orange-400">{open}</div>
                     <div className="text-[10px] text-stone-400">Open</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.resolvedBugs}</div>
+                    <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{resolved}</div>
                     <div className="text-[10px] text-stone-400">Resolved</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-bold text-stone-900 dark:text-white">{p.memberCount}</div>
+                    <div className="text-sm font-bold text-stone-900 dark:text-white">{members}</div>
                     <div className="text-[10px] text-stone-400">Members</div>
                   </div>
                 </div>
 
                 <div className="text-xs text-stone-400 mt-3">
-                  Created {new Date(p.created_at).toLocaleDateString()}
+                  {total > 0
+                    ? `${recent} activity events this week · created ${new Date(p.created_at).toLocaleDateString()}`
+                    : `No issues yet · created ${new Date(p.created_at).toLocaleDateString()}`}
                 </div>
               </Link>
             )

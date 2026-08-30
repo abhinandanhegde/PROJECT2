@@ -25,6 +25,42 @@ PROJECTS = [
 
 ROLES = ["ADMIN", "DEVELOPER", "QA", "REPORTER"]
 
+# Which team works on which project. Keeps memberships realistic: different
+# people, different projects, different per-project member counts. The demo
+# user is ALWAYS a member and ADMIN on every project (added in demo.py), so the
+# one-click demo login keeps working everywhere.
+PROJECT_MEMBERS = {
+    "b0000000-0000-0000-0000-000000000001": [  # T2 Bug Tracker — the core team
+        "a0000000-0000-0000-0000-000000000001",  # Alice Chen
+        "a0000000-0000-0000-0000-000000000002",  # Bob Martinez
+        "a0000000-0000-0000-0000-000000000003",  # Carol Johnson
+        "a0000000-0000-0000-0000-000000000004",  # Dave Kim
+        "a0000000-0000-0000-0000-000000000005",  # Eve Nakamura
+        "a0000000-0000-0000-0000-000000000006",  # Frank Alvarez
+        "a0000000-0000-0000-0000-000000000007",  # Grace Liu
+        "a0000000-0000-0000-0000-000000000008",  # Henry Osei
+    ],
+    "b0000000-0000-0000-0000-000000000002": [  # T2 Mobile App — mobile squad
+        "a0000000-0000-0000-0000-000000000002",  # Bob Martinez
+        "a0000000-0000-0000-0000-000000000003",  # Carol Johnson
+        "a0000000-0000-0000-0000-000000000004",  # Dave Kim
+        "a0000000-0000-0000-0000-000000000005",  # Eve Nakamura
+    ],
+    "b0000000-0000-0000-0000-000000000003": [  # T2 API Gateway — platform team
+        "a0000000-0000-0000-0000-000000000001",  # Alice Chen
+        "a0000000-0000-0000-0000-000000000004",  # Dave Kim
+        "a0000000-0000-0000-0000-000000000005",  # Eve Nakamura
+        "a0000000-0000-0000-0000-000000000006",  # Frank Alvarez
+        "a0000000-0000-0000-0000-000000000008",  # Henry Osei
+    ],
+    "b0000000-0000-0000-0000-000000000004": [  # T2 Design System — design/QA
+        "a0000000-0000-0000-0000-000000000001",  # Alice Chen
+        "a0000000-0000-0000-0000-000000000002",  # Bob Martinez
+        "a0000000-0000-0000-0000-000000000003",  # Carol Johnson
+        "a0000000-0000-0000-0000-000000000007",  # Grace Liu
+    ],
+}
+
 COMPONENTS_PER_PROJECT = [
     "Frontend", "Backend", "Database", "DevOps", "Mobile", "API",
 ]

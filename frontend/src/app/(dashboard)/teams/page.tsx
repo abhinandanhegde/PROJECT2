@@ -12,9 +12,15 @@ interface TeamMemberDisplay {
   role: string
   assignedBugs: number
   reportedBugs: number
+  workload: number
   avatar: string
   projects: string[]
 }
+
+// Workload = weighted open assigned work (by priority), so who is carrying the
+// most unresolved work is visible at a glance.
+const OPEN_STATUSES = new Set(['NEW', 'CONFIRMED', 'IN_PROGRESS', 'REOPENED'])
+const PRIORITY_WEIGHT: Record<string, number> = { P1: 5, P2: 4, P3: 3, P4: 2, P5: 1 }
 
 export default function TeamsPage() {
   const [members, setMembers] = useState<TeamMemberDisplay[]>([])
@@ -33,7 +39,7 @@ export default function TeamsPage() {
           try {
             const [memRes, bugRes] = await Promise.allSettled([
               api.getMembers(proj.id),
-              api.getBugs(proj.id, { per_page: '200' }),
+              api.getBugs(proj.id, { per_page: '100' }),
             ])
 
             const mems: ProjectMember[] = memRes.status === 'fulfilled' ? memRes.value?.data || [] : []
@@ -45,14 +51,22 @@ export default function TeamsPage() {
               const userEmail = m.users?.email || ''
               const initials = userName.split(' ').map((n) => n.charAt(0)).join('').toUpperCase().slice(0, 2)
 
-              // Count bugs assigned and reported by this member
-              const assignedCount = bugs.filter((b) => b.assignee_id === m.user_id).length
+              // Count bugs assigned and reported by this member; workload from
+              // unresolved assigned work weighted by priority.
+              const assigned = bugs.filter((b) => b.assignee_id === m.user_id)
+              const assignedCount = assigned.length
               const reportedCount = bugs.filter((b) => b.reporter_id === m.user_id).length
+              const workload = assigned.reduce(
+                (sum, b) =>
+                  OPEN_STATUSES.has(b.status) ? sum + (PRIORITY_WEIGHT[b.priority] ?? 1) : sum,
+                0
+              )
 
               if (existing) {
                 existing.projects.push(proj.name)
                 existing.assignedBugs += assignedCount
                 existing.reportedBugs += reportedCount
+                existing.workload += workload
                 const roleOrder = ['REPORTER', 'QA', 'DEVELOPER', 'ADMIN']
                 if (roleOrder.indexOf(m.role) > roleOrder.indexOf(existing.role)) {
                   existing.role = m.role
@@ -65,6 +79,7 @@ export default function TeamsPage() {
                   role: m.role,
                   assignedBugs: assignedCount,
                   reportedBugs: reportedCount,
+                  workload: workload,
                   avatar: initials,
                   projects: [proj.name],
                 })
@@ -87,6 +102,7 @@ export default function TeamsPage() {
 
   const totalMembers = members.length
   const totalAssigned = members.reduce((sum, m) => sum + m.assignedBugs, 0)
+  const maxWorkload = Math.max(1, ...members.map((m) => m.workload))
 
   return (
     <div className="space-y-6">
@@ -157,7 +173,7 @@ export default function TeamsPage() {
               REPORTER: 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300',
             }
 
-            const workloadPct = totalAssigned > 0 ? Math.round((m.assignedBugs / totalAssigned) * 100) : 0
+            const workloadPct = m.workload > 0 ? Math.round((m.workload / maxWorkload) * 100) : 0
 
             return (
               <div key={m.userId} className="bg-white dark:bg-stone-900 rounded-2xl p-6 border border-[#eee9e2] dark:border-stone-800 shadow-sm text-center">
@@ -193,7 +209,7 @@ export default function TeamsPage() {
                       className={`h-full rounded-full transition-all duration-500 ${
                         workloadPct > 40 ? 'bg-red-500' : workloadPct > 20 ? 'bg-amber-500' : 'bg-emerald-500'
                       }`}
-                      style={{ width: `${Math.min(workloadPct * 2, 100)}%` }}
+                      style={{ width: `${Math.min(workloadPct, 100)}%` }}
                     />
                   </div>
                 </div>

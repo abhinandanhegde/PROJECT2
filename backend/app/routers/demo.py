@@ -29,7 +29,7 @@ class DemoSetupRequest(BaseModel):
 
 
 from app.seed_data import (
-    USERS, PROJECTS, ROLES, COMPONENTS_PER_PROJECT,
+    USERS, PROJECTS, ROLES, PROJECT_MEMBERS, COMPONENTS_PER_PROJECT,
     PROJECT_BUG_TEMPLATES, COMMENTS, RELATIONSHIP_TYPES
 )
 
@@ -61,6 +61,7 @@ def _seed_all(db, user_id: str) -> dict:
     """
     err = []
     user_ids = [user_id] + [u["id"] for u in USERS]
+    n_users = len(user_ids)
 
     # Step 1: Ensure all seed users exist in auth.users and public.users
     try:
@@ -109,10 +110,13 @@ def _seed_all(db, user_id: str) -> dict:
     except Exception as e:
         err.append(f"insert_projects:{e}")
 
-    # Step 4: Memberships (batched, demo user is ADMIN on all projects)
+    # Step 4: Memberships (batched — demo user is ADMIN on all projects; the
+    # rest belong to the project's own team so member counts and badges vary)
     memberships = []
     for p in PROJECTS:
-        for i, uid in enumerate(user_ids):
+        subset = [uid for uid in PROJECT_MEMBERS.get(p["id"], []) if uid != user_id]
+        project_user_ids = [user_id] + subset
+        for i, uid in enumerate(project_user_ids):
             memberships.append({
                 "id": _uid("member", p["id"], uid),
                 "project_id": p["id"],
@@ -146,16 +150,19 @@ def _seed_all(db, user_id: str) -> dict:
         pass
 
     # Step 6: Bugs (batched, per-project thematic templates)
+    # Reporters/assignees are drawn from the project's own members, so member
+    # stats (assigned / reported / workload) are consistent with memberships.
     all_bugs = []
-    n_users = len(user_ids)
     for p in PROJECTS:
         tpls = PROJECT_BUG_TEMPLATES.get(p["id"], [])
         comps = components_by_proj.get(p["id"], [])
+        members = [user_id] + [uid for uid in PROJECT_MEMBERS.get(p["id"], []) if uid != user_id]
+        n_members = len(members)
         for i, (title, desc, sev, pri, status, resolution) in enumerate(tpls):
             bug_id = _uid("bug", p["id"], title)
-            reporter = user_ids[i % n_users]
-            # Assignee is the demo user or other users
-            assignee = user_ids[(i + 1) % n_users] if i % 4 != 0 else None
+            reporter = members[i % n_members]
+            # Assignee is a project teammate or unassigned (~1 in 4 unassigned)
+            assignee = members[(i + 1) % n_members] if i % 4 != 0 else None
             comp = comps[i % len(comps)] if comps else None
 
             hours_ago = 24 + (i * 53) % (90 * 24)
