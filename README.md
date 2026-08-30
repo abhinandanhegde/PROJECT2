@@ -1,180 +1,344 @@
 # BugNexus
 
-> A deterministic bug-tracking platform with intelligent triage, dependency graph impact analysis, and role-based security — built in 3 days for CloneFest hackathon.
+> A bug tracking platform with deterministic intelligence, dependency graph impact analysis, and database-level security — built in3 days for CloneFest hackathon.
 
-**Live Demo:** [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) · **API Docs:** [/docs](https://project-2-sigma-seven.vercel.app/docs)
-
----
-
-## Judging Fit — Rubric Traceability
-
-Every mark maps to a specific, verifiable implementation. Click any link to see the code.
-
-### 1. Problem Understanding & Core Functionality (20/20)
-
-| Requirement | Implementation | Proof |
-|---|---|---|
-| ✅ Full bug lifecycle | 7-state machine: NEW→CONFIRMED→IN_PROGRESS→RESOLVED→VERIFIED→CLOSED+REOPENED | `backend/app/models/bugs.py` — `VALID_TRANSITIONS` dict, enforced at app + DB level |
-| ✅ Per-project RBAC | 4-tier roles: REPORTER→DEVELOPER→QA→ADMIN with RLS | `database/rls.sql` — 25+ policies, `backend/app/helpers.py` — `require_project_role()` |
-| ✅ Full CRUD | Bugs, comments, components, relationships, projects — all with create/read/update/delete | `backend/app/routers/` — 10 routers, 32+ endpoints |
-| ✅ Search + filter + sort | Global search, per-project filters, URL-query shareable state | `backend/app/routers/bugs.py` — `_or_search_filter()`, `frontend/src/app/(dashboard)/bugs/page.tsx` |
-| ✅ Audit trail | Every mutation logged with actor identity, old/new values, timestamps | `backend/app/helpers.py` — `log_activity()` → `activity_log` table |
-| ✅ Components + teams | Component health tracking, per-project team management with role badges | `backend/app/routers/components.py`, `frontend/src/app/(dashboard)/teams/page.tsx` |
-
-### 2. Innovation & Meaningful Differentiation (20/20)
-
-| Innovation | What makes it different | Proof |
-|---|---|---|
-| ✅ **Zero-AI intelligence** | No LLM, no API keys, no cost, instant results — deliberately chose deterministic over AI | `backend/app/routers/intelligence.py` — 500+ lines of keyword heuristics + pg_trgm |
-| ✅ Keyword triage with confidence | Not just "suggest severity" — explains WHY with a confidence score (0.0–1.0) | `POST /api/intelligence/projects/{id}/bugs/triage` — returns reasons + signals + confidence |
-| ✅ pg_trgm duplicate detection | PostgreSQL-native trigram similarity, <100ms, with Jaccard fallback | `POST /api/intelligence/projects/{id}/bugs/duplicates` — RPC + fallback |
-| ✅ 7-factor risk scoring | severity(25) + priority(15) + age(15) + status_blockage(15) + reopens(15) + staleness(10) + assignment(5) = 100 | `POST /api/intelligence/projects/{id}/bugs/risk` — weighted factor breakdown |
-| ✅ Dependency graph + impact analysis | Visual bug relationships with critical path detection, per-node impact counts, and resolution order | `GET /api/graph` — BFS reach counting + topological sort, `frontend/src/app/(dashboard)/graph/page.tsx` |
-| ✅ Project-level risk analysis | Aggregate project health score with actionable recommendations | `GET /api/intelligence/projects/{id}/risk-analysis` — 6-factor project scoring |
-
-### 3. Technical Implementation & Architecture (15/15)
-
-| Criterion | Implementation | Proof |
-|---|---|---|
-| ✅ Clean architecture | Next.js ↔ FastAPI ↔ Supabase PostgreSQL — no mixing, typed interfaces | `frontend/src/lib/api.ts` (typed client), `backend/app/models/` (Pydantic v2) |
-| ✅ RLS enforcement | PostgREST-level access control verified per user JWT | `database/rls.sql` — 25+ policies, `backend/app/supabase_client.py` — `get_user_client()` |
-| ✅ Auth via JWKS | ES256 + RS256, Supabase Auth handles signup/login, no custom JWT | `backend/app/auth.py` — `verify_supabase_token()` with key rotation retry |
-| ✅ Testing | 100 backend tests (auth, lifecycle, triage, risk, models, endpoints, search security, graph impact, RLS enforcement, rate limiting) | `backend/tests/` — 100 passed, 0 failed |
-| ✅ CI/CD | GitHub Actions: lint → typecheck → build → backend tests (`set -euo pipefail`) | `.github/workflows/ci.yml` — no `|| true`, real test execution |
-| ✅ Deployed | Vercel (frontend) — live and accessible | [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) |
-
-### 4. User Experience & Accessibility (15/15)
-
-| Criterion | Implementation | Proof |
-|---|---|---|
-| ✅ Polished UI | Light theme, consistent orange accent, proper badges and status colors | Every page in `frontend/src/app/(dashboard)/` |
-| ✅ Responsive | Cards on mobile, table on desktop, collapsible sidebar | `frontend/src/components/layout/Sidebar.tsx`, `Header.tsx` |
-| ✅ Interactive graph | Force-directed layout with severity rings, project grouping, edge labels | `frontend/src/app/(dashboard)/graph/page.tsx` — force simulation |
-| ✅ Search with debounce | URL-query based filters, shareable state, `useDebounce` hook | `frontend/src/hooks/useDebounce.ts`, `frontend/src/app/(dashboard)/search/page.tsx` |
-| ✅ Loading states | Skeleton loaders on every data-fetching page | `frontend/src/app/(dashboard)/loading.tsx`, inline skeletons |
-| ✅ Project creation | One-click form with name + description, instant refresh | `frontend/src/app/(dashboard)/projects/page.tsx` — `handleCreate()` |
-
-### 5. Performance & Reliability / Demo Quality (20/20)
-
-| Criterion | Implementation | Proof |
-|---|---|---|
-| ✅ Instant demo login | Verify-first pattern: checks if seeded → skips re-seed → signs in (~4s first time, <1s after) | `backend/app/routers/demo.py` — `verify_demo()` + `_seed_all()` with batched inserts |
-| ✅ API caching | 30s client-side cache with `invalidateCache()` on mutations | `frontend/src/lib/api.ts` — `cached()` + `CACHE_TTL_MS = 30_000` |
-| ✅ Parallel loading | Dashboard fires 3 API calls simultaneously via `Promise.allSettled` | `frontend/src/app/(dashboard)/page.tsx` — `useEffect` with parallel fetch |
-| ✅ Single-trip graph | All nodes + edges in ONE `/api/graph` call (was N+1 before) | `backend/app/routers/relationships.py` — `bug_graph()` endpoint |
-| ✅ Prefetching | Cache warmed for Graph + Projects while user reads dashboard | `frontend/src/app/(dashboard)/layout.tsx` — `api.getGraph().catch()` |
-| ✅ Deterministic seed | Same demo data every time — idempotent UUID-based inserts | `backend/app/seed_data.py` — deterministic `_uid()` function |
-
-### 6. Documentation & Explanation (10/10)
-
-| Criterion | Implementation | Proof |
-|---|---|---|
-| ✅ Architecture docs | Full system diagram, tech stack table, project structure | This README — `## Architecture`, `## Tech Stack`, `## Project Structure` |
-| ✅ Test documentation | 71 tests with proof output, category breakdown | `docs/TESTS.md` — timestamped test runs |
-| ✅ Database docs | Full schema, RLS policies, state machine, connection pattern | `database/README.md` — applied SQL files with explanations |
-| ✅ API docs | Auto-generated Swagger UI with request/response schemas | `GET /docs` on the backend — FastAPI auto-docs |
-| ✅ Role-based dev docs | Dev 1-4 ownership docs with exact file responsibilities | `project2/` docs — security, backend, frontend, integration |
-| ✅ Seeded demo data | 4 thematic projects with realistic per-project backlogs | `backend/app/seed_data.py` — 35+ bugs across web/mobile/API/design |
-
-**Total: 100 marks.**
+**Live Demo:** [project-2-sigma-seven.vercel.app](https://project-2-sigma-seven.vercel.app) · **API Docs:** [/docs](https://project2-production-526d.up.railway.app/docs)
 
 ---
 
 ## What It Does
 
-BugNexus tracks software bugs from report to resolution with a full lifecycle state machine, project-level access control, deterministic intelligence, and dependency graph impact analysis.
-
-| Feature | How It Works |
-|---------|-------------|
-| **Bug Lifecycle** | 7-state machine: NEW → CONFIRMED → IN_PROGRESS → RESOLVED → VERIFIED → CLOSED (+ REOPENED) |
-| **Intelligent Triage** | Keyword-based severity/priority suggestion with confidence scoring — no LLM needed |
-| **Duplicate Detection** | PostgreSQL pg_trgm trigram similarity + Jaccard fallback — finds similar bugs in <100ms |
-| **Risk Analysis** | 7-factor weighted scoring (severity, priority, age, status, reopens, staleness, assignment) |
-| **Role-Based Access** | 4-tier project roles: REPORTER → DEVELOPER → QA → ADMIN with RLS enforcement |
-| **Full Audit Trail** | Every mutation logged with actor identity, old/new values, timestamps |
+BugNexus tracks software bugs from report to resolution. It adds four intelligence features that most bug trackers don't have: smart triage, duplicate detection, risk analysis, and dependency impact analysis. All run without AI — pure Python rules and PostgreSQL.
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph Frontend ["Next.js 15 — Vercel"]
+        A[Login / Signup] --> B[Dashboard]
+        B --> C[Bug List]
+        B --> D[Intelligence Center]
+        C --> E[Bug Detail]
+        C --> F[Bug Form]
+        E --> G[Comments]
+        B --> H[Graph]
+        H --> I[Impact Analysis]
+    end
+
+    subgraph Backend ["FastAPI — Railway"]
+        J[Auth — JWT/JWKS] --> K[Projects API]
+        J --> L[Bugs API]
+        J --> M[Intelligence API]
+        J --> N[Dashboard API]
+        J --> O[Graph API]
+    end
+
+    subgraph Database ["Supabase PostgreSQL"]
+        P[11 Tables]
+        Q[35 RLS Policies]
+        R[pg_trgm Extension]
+    end
+
+    A -->|Bearer JWT| J
+    B -->|Bearer JWT| J
+    M -->|keyword analysis| S[Triage Engine]
+    M -->|pg_trgm| R
+    M -->|7-factor scoring| T[Risk Engine]
+    O -->|BFS + topological sort| U[Impact Engine]
+    L --> P
+    Q -.->|enforced by| P
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Browser (Next.js)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
-│  │ Auth UI  │  │Dashboard │  │ Bug CRUD │  │Search   │ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬────┘ │
-│       └──────────────┴──────────────┴──────────────┘     │
-│                          │ Bearer JWT                    │
-└──────────────────────────┼──────────────────────────────┘
-                           │
-┌──────────────────────────┼──────────────────────────────┐
-│                    FastAPI Backend                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
-│  │Auth (ES256)│ │Projects │  │   Bugs   │  │Intel.   │ │
-│  │JWKS Verify │ │Members  │  │Comments  │  │Triage   │ │
-│  └──────────┘  │Components│  │Relations │  │Dupes    │ │
-│                 └──────────┘  └──────────┘  │Risk     │ │
-│                                              └─────────┘ │
-│                          │                               │
-│              User-context client (RLS enforced)          │
-└──────────────────────────┼──────────────────────────────┘
-                           │
-┌──────────────────────────┼──────────────────────────────┐
-│               Supabase PostgreSQL                        │
-│  ┌─────┐ ┌──────┐ ┌─────┐ ┌────────┐ ┌──────────────┐  │
-│  │Users│ │Bugs  │ │Rls  │ │pg_trgm │ │activity_log  │  │
-│  │     │ │      │ │policies│ │extension│ │(audit trail) │  │
-│  └─────┘ └──────┘ └─────┘ └────────┘ └──────────────┘  │
-└─────────────────────────────────────────────────────────┘
+
+### Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant S as Supabase Auth
+    participant F as FastAPI
+    participant D as PostgreSQL
+
+    U->>S: Login (email + password)
+    S-->>U: JWT access token
+    U->>F: GET /api/projects<br/>Authorization: Bearer <token>
+    F->>F: Verify JWT via JWKS<br/>(ES256 / RS256)
+    F->>D: Query with user's JWT<br/>(RLS enforced)
+    D-->>F: Results (only user's projects)
+    F-->>U: Response
 ```
+
+### Bug Lifecycle State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW
+    NEW --> CONFIRMED
+    CONFIRMED --> IN_PROGRESS
+    CONFIRMED --> NEW : Reopen
+    IN_PROGRESS --> RESOLVED
+    IN_PROGRESS --> CONFIRMED : Reopen
+    RESOLVED --> VERIFIED
+    RESOLVED --> REOPENED
+    VERIFIED --> CLOSED
+    VERIFIED --> REOPENED
+    REOPENED --> CONFIRMED
+    REOPENED --> IN_PROGRESS
+    CLOSED --> REOPENED : Admin only
+```
+
+Every transition is validated at **three layers**: frontend (UI), backend (FastAPI), and database (RLS). You cannot skip states.
+
+### Intelligence Engine
+
+```mermaid
+graph LR
+    subgraph Input
+        A[Bug Title]
+        B[Bug Description]
+        C[Severity]
+        D[Priority]
+    end
+
+    subgraph Triage ["Smart Triage"]
+        E[Keyword Lexicons]
+        F[Confidence Scoring]
+        G[Reasoning Chain]
+    end
+
+    subgraph Duplicates ["Duplicate Detection"]
+        H[pg_trgm Trigram]
+        I[Jaccard Fallback]
+    end
+
+    subgraph Risk ["Risk Analysis"]
+        J[Severity × 0.25]
+        K[Priority × 0.20]
+        L[Age × 0.15]
+        M[Blockage × 0.15]
+        N[Reopens × 0.15]
+        O[Staleness × 0.10]
+        P[Assignment × 0.10]
+    end
+
+    subgraph Impact ["Dependency Impact"]
+        Q[BFS Reach Counting]
+        R[Topological Sort]
+        S[Critical Path]
+    end
+
+    A --> E
+    B --> E
+    C --> J
+    D --> K
+    A --> H
+    B --> H
+    E --> F --> G
+    H --> I
+    J & K & L & M & N & O & P --> T[Risk Score 0-100]
+    Q --> R --> S
+```
+
+**Zero AI. Zero LLM. Zero external APIs.** Every result is explainable with a reasoning chain.
+
+### Database Schema
+
+```mermaid
+erDiagram
+    users ||--o{ project_members : has
+    projects ||--o{ project_members : has
+    projects ||--o{ bugs : contains
+    projects ||--o{ components : has
+    bugs ||--o{ comments : has
+    bugs ||--o{ attachments : has
+    bugs ||--o{ relationships : blocks
+    bugs ||--o{ activity_log : tracked_by
+    users ||--o{ activity_log : acts_on
+
+    users {
+        uuid id PK
+        string email
+        string display_name
+    }
+    projects {
+        uuid id PK
+        string name
+        string description
+    }
+    project_members {
+        uuid project_id FK
+        uuid user_id FK
+        enum role
+    }
+    bugs {
+        uuid id PK
+        uuid project_id FK
+        string title
+        enum status
+        enum severity
+        enum priority
+        uuid reporter_id FK
+        uuid assignee_id FK
+    }
+    comments {
+        uuid id PK
+        uuid bug_id FK
+        uuid author_id FK
+        string body
+    }
+    relationships {
+        uuid source_bug_id FK
+        uuid target_bug_id FK
+        enum type
+    }
+    activity_log {
+        uuid project_id FK
+        uuid actor_id FK
+        string action
+        string entity_type
+    }
+```
+
+11 tables · 35 RLS policies · pg_trgm extension for duplicate detection
+
+---
 
 ## Tech Stack
 
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 | App Router, server components, type safety |
-| Backend | Python 3.10+, FastAPI, Pydantic v2, Uvicorn | Async, auto-docs, validation |
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS | App Router, type safety, responsive UI |
+| Backend | Python 3.10+, FastAPI, Pydantic v2 | Async API, validation, auto-docs |
 | Database | Supabase PostgreSQL | Managed Postgres + Auth + RLS |
 | Auth | Supabase Auth + ES256 JWT | JWKS verification, no custom auth |
-| Intelligence | pg_trgm, Python heuristics | Zero AI dependency, deterministic |
+| Intelligence | Python heuristics + pg_trgm | Zero-cost deterministic analysis |
+| Deployment | Vercel (frontend) + Railway (backend) | Auto-deploy on push |
+
+---
+
+## Features
+
+### Core Functionality
+
+| Feature | Details |
+|---------|---------|
+| Bug Lifecycle | 7 states: NEW → CONFIRMED → IN_PROGRESS → RESOLVED → VERIFIED → CLOSED (+ REOPENED) |
+| RBAC | 4 tiers: REPORTER → DEVELOPER → QA → ADMIN |
+| Full CRUD | Bugs, comments, components, relationships, projects |
+| Search | Global search with filter, sort, pagination |
+| Audit Trail | Every mutation logged with actor, old/new values, timestamps |
+| Keyboard Shortcuts | J/K navigate, Enter opens, / focuses search |
+
+### Intelligence Features
+
+| Feature | How It Works | Cost |
+|---------|-------------|------|
+| Smart Triage | Keyword analysis + confidence scoring + reasoning chain | $0 |
+| Duplicate Detection | PostgreSQL pg_trgm trigram similarity + Jaccard fallback | $0 |
+| Risk Analysis | 7-factor weighted scoring (severity, priority, age, blockage, reopens, staleness, assignment) | $0 |
+| Dependency Impact | BFS reach counting + topological sort for critical path | $0 |
+
+### Security
+
+| Feature | Implementation |
+|---------|---------------|
+| JWT Verification | JWKS-based ES256/RS256 with auto key rotation |
+| Row-Level Security | 35 policies — users can only see their projects |
+| Service-Role Isolation | Admin client only for seed/demo — never for user requests |
+| Security Headers | X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store |
+| Rate Limiting | Per-user sliding window (100/min) on intelligence endpoints |
+| Input Validation | Pydantic v2 schemas on all endpoints |
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/health/detail` | Health with DB ping, uptime, version |
+| **Projects** | | |
+| `GET` | `/api/projects` | List user's projects |
+| `POST` | `/api/projects` | Create project (auto-adds creator as ADMIN) |
+| `PUT` | `/api/projects/{id}` | Update project (ADMIN) |
+| `DELETE` | `/api/projects/{id}` | Delete project (ADMIN) |
+| **Bugs** | | |
+| `GET` | `/api/projects/{id}/bugs` | List bugs (filter, sort, paginate) |
+| `POST` | `/api/projects/{id}/bugs` | Create bug |
+| `GET` | `/api/projects/{id}/bugs/{id}` | Get bug details |
+| `PUT` | `/api/projects/{id}/bugs/{id}` | Update bug |
+| `PATCH` | `/api/projects/{id}/bugs/{id}/status` | Change status (lifecycle enforced) |
+| `PATCH` | `/api/projects/{id}/bugs/{id}/assign` | Assign bug (DEVELOPER+) |
+| `GET` | `/api/bugs/search?q=...` | Global search |
+| **Comments** | | |
+| `GET` | `/api/bugs/{id}/comments` | List comments |
+| `POST` | `/api/bugs/{id}/comments` | Add comment |
+| `PUT` | `/api/bugs/{id}/comments/{id}` | Edit comment |
+| `DELETE` | `/api/bugs/{id}/comments/{id}` | Delete comment |
+| **Intelligence** | | |
+| `POST` | `/api/intelligence/projects/{id}/bugs/triage` | Smart triage |
+| `POST` | `/api/intelligence/projects/{id}/bugs/duplicates` | Find duplicates |
+| `POST` | `/api/intelligence/projects/{id}/bugs/risk` | Risk analysis |
+| **Graph** | | |
+| `GET` | `/api/graph` | Dependency graph + impact analysis |
+| **Dashboard** | | |
+| `GET` | `/api/dashboard/stats` | Dashboard statistics |
+| `GET` | `/api/dashboard/recent` | Recent activity |
+| `GET` | `/api/dashboard/intelligence` | Intelligence overview |
+| **Demo** | | |
+| `POST` | `/api/demo/setup` | One-click demo setup |
+
+Full interactive docs at `https://project2-production-526d.up.railway.app/docs`.
+
+---
 
 ## Project Structure
 
 ```
-T2-BugNexus/
-├── frontend/                    # Next.js 15 application
+T2/
+├── frontend/                     # Next.js 15 application
 │   ├── src/
-│   │   ├── app/                 # App Router pages
-│   │   │   ├── (auth)/          # Login, Signup
-│   │   │   └── (dashboard)/     # Dashboard, Bugs, Search, etc.
-│   │   ├── components/          # Reusable UI components
-│   │   ├── lib/                 # API client, auth, types
-│   │   └── hooks/               # Custom React hooks
+│   │   ├── app/
+│   │   │   ├── (auth)/           # Login, Signup
+│   │   │   └── (dashboard)/      # 12 pages (Dashboard, Bugs, Graph, Intelligence, etc.)
+│   │   ├── components/layout/    # Sidebar, Header, MobileNav
+│   │   ├── lib/
+│   │   │   ├── api.ts            # Typed API client with caching
+│   │   │   ├── supabase.ts       # Browser auth client
+│   │   │   ├── types.ts          # TypeScript types matching backend
+│   │   │   └── config.ts         # Environment configuration
+│   │   └── hooks/                # useDebounce
 │   └── package.json
 │
-├── backend/                     # FastAPI application
+├── backend/                      # FastAPI application
 │   ├── app/
-│   │   ├── auth.py              # JWT verification (ES256/RS256)
-│   │   ├── dependencies.py      # FastAPI dependency injection
-│   │   ├── supabase_client.py   # Service-role + user-context clients
-│   │   ├── helpers.py           # Role checking, activity logging
-│   │   ├── middleware.py        # Security headers, request ID
-│   │   ├── exceptions.py        # Custom error classes
-│   │   ├── routers/             # API endpoints (8 routers)
-│   │   └── models/              # Pydantic request/response schemas
+│   │   ├── auth.py               # JWT verification (ES256/RS256, JWKS)
+│   │   ├── dependencies.py       # FastAPI dependency injection
+│   │   ├── supabase_client.py    # Service-role + user-context clients
+│   │   ├── helpers.py            # Role checking, activity logging
+│   │   ├── middleware.py         # Security headers, request ID, access logging
+│   │   ├── exceptions.py         # Custom error classes + handlers
+│   │   ├── routers/              #10 routers (projects, bugs, comments, etc.)
+│   │   └── models/               # Pydantic request/response schemas
+│   ├── tests/                    #100 backend tests
 │   └── requirements.txt
 │
-├── database/                    # SQL migrations (apply in order)
-│   ├── schema.sql               # Tables, enums, indexes
-│   ├── rls.sql                  # Row-Level Security policies
-│   ├── auth_trigger.sql         # Supabase Auth → users sync
-│   ├── audit_function.sql       # log_activity() function
-│   └── project_creation.sql     # Atomic project + admin creation
+├── database/                     # SQL migrations
+│   ├── schema.sql                #11 tables, indexes, enums
+│   ├── rls.sql                   #35 Row-Level Security policies
+│   ├── auth_trigger.sql          # Supabase Auth → users sync
+│   ├── audit_function.sql        # log_activity() SECURITY DEFINER
+│   ├── project_creation.sql      # Atomic project + admin creation
+│   ├── find_similar_bugs.sql     # pg_trgm duplicate detection RPC
+│   └── README.md                 # Full schema documentation
 │
 ├── scripts/
-│   └── seed.py                  # Database seeder (5 users, 3 projects, 42 bugs)
+│   └── seed.py                   # Database seeder
 │
-└── tests/
-    └── e2e/                     # Integration tests (23 tests)
+└── tests/                        # Integration tests
+    └── e2e/
 ```
+
+---
 
 ## Quick Start
 
@@ -184,33 +348,17 @@ T2-BugNexus/
 - Python ≥ 3.10
 - Supabase account ([free tier works](https://supabase.com))
 
-### 0. One-command setup
-
-```bash
-# Interactive (prompts for Supabase values)
-bash scripts/setup.sh
-
-# Or non-interactive
-BUGNEXUS_SUPABASE_URL=https://xxx.supabase.co \
-BUGNEXUS_SUPABASE_ANON_KEY=your-anon-key \
-BUGNEXUS_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
-bash scripts/setup.sh --yes
-```
-
-This creates `backend/.env` + `frontend/.env.local`, installs backend + frontend
-dependencies, and validates the seed data (`seed.py --dry-run`). Pre-existing
-`.env` files are never overwritten.
-
 ### 1. Database Setup
 
-1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**
-2. Run these files **in order**:
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → SQL Editor
+2. Run these files in order:
    ```sql
    -- 1. schema.sql
    -- 2. rls.sql
    -- 3. auth_trigger.sql
    -- 4. audit_function.sql
    -- 5. project_creation.sql
+   -- 6. find_similar_bugs.sql
    ```
 
 ### 2. Backend
@@ -218,10 +366,8 @@ dependencies, and validates the seed data (`seed.py --dry-run`). Pre-existing
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+source .venv/bin/activate
 
-# Create .env file
 cat > .env << 'EOF'
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
@@ -229,25 +375,22 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 EOF
 
-# Start server
+pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
-# → http://localhost:8000/docs (Swagger UI)
+# → http://localhost:8000/docs
 ```
 
 ### 3. Frontend
 
 ```bash
 cd frontend
-npm install
-
-# Create .env.local
 cat > .env.local << 'EOF'
 NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 EOF
 
-# Start dev server
+npm install
 npm run dev
 # → http://localhost:3000
 ```
@@ -258,283 +401,47 @@ npm run dev
 cd backend
 python -m scripts.seed            # normal seed (idempotent)
 python -m scripts.seed --dry-run  # preview without writing
-# Creates: 8 users, 4 projects, 116 bugs, comments, relationships, activity
 ```
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| **Projects** | | |
-| `GET` | `/api/projects` | List user's projects |
-| `POST` | `/api/projects` | Create project (auto-adds creator as ADMIN) |
-| `GET` | `/api/projects/{id}` | Get project details |
-| `PUT` | `/api/projects/{id}` | Update project (ADMIN) |
-| `DELETE` | `/api/projects/{id}` | Delete project (ADMIN) |
-| `GET` | `/api/projects/{id}/stats` | Project statistics |
-| **Bugs** | | |
-| `GET` | `/api/projects/{id}/bugs` | List bugs (filter, sort, paginate) |
-| `POST` | `/api/projects/{id}/bugs` | Create bug |
-| `GET` | `/api/projects/{id}/bugs/{id}` | Get bug details |
-| `PUT` | `/api/projects/{id}/bugs/{id}` | Update bug |
-| `PATCH` | `/api/projects/{id}/bugs/{id}/status` | Change bug status |
-| `PATCH` | `/api/projects/{id}/bugs/{id}/assign` | Assign bug |
-| `GET` | `/api/bugs/search?q=...` | Global search |
-| **Comments** | | |
-| `GET` | `/api/bugs/{id}/comments` | List comments |
-| `POST` | `/api/bugs/{id}/comments` | Add comment |
-| `PUT` | `/api/bugs/{id}/comments/{id}` | Edit comment |
-| `DELETE` | `/api/bugs/{id}/comments/{id}` | Delete comment |
-| **Intelligence** | | |
-| `POST` | `/api/intelligence/projects/{id}/bugs/triage` | Get triage suggestion |
-| `POST` | `/api/intelligence/projects/{id}/bugs/duplicates` | Find duplicate bugs |
-| `POST` | `/api/intelligence/projects/{id}/bugs/risk` | Analyze bug risk |
-| **Other** | | |
-| `GET` | `/api/projects/{id}/members` | List project members |
-| `POST` | `/api/projects/{id}/members` | Add member (ADMIN) |
-| `GET` | `/api/projects/{id}/components` | List components |
-| `GET` | `/api/dashboard/stats` | Dashboard statistics |
-| `GET` | `/api/dashboard/recent` | Recent activity |
-| `POST` | `/api/demo/setup` | One-click demo (creates user + seeds data) |
-| `GET` | `/api/demo/verify` | Check demo account is seeded (counts) |
-| `GET` | `/health` | Simple health check |
-| `GET` | `/health/detail` | Rich health (version, uptime, request id) |
-
-Full interactive docs at `http://localhost:8000/docs`.
-
-## Security Architecture
-
-### Authentication Flow
-
-```
-Browser → Supabase Auth (signup/login) → JWT access token
-       → Authorization: Bearer <token> → FastAPI
-       → JWKS verification (ES256/RS256) → Authenticated user
-       → Supabase client with user's JWT → PostgreSQL RLS enforced
-```
-
-### Key Security Features
-
-| Feature | Implementation |
-|---------|---------------|
-| **JWT Verification** | JWKS-based ES256/RS256 with auto key rotation |
-| **Row-Level Security** | Policies on all 11 tables — users can only see their projects |
-| **Service-Role Isolation** | Service-role client ONLY for admin ops — never for user requests |
-| **Security Headers** | X-Content-Type-Options, X-Frame-Options, Cache-Control: no-store |
-| **Request IDs** | Every request gets unique X-Request-ID for tracing |
-| **Structured Logging** | Every request logged as JSON (method, path, status, duration, request_id) |
-| **Rate Limiting** | Per-user sliding window (100/min) on intelligence endpoints → HTTP 429 |
-| **Audit Trail** | SECURITY DEFINER function validates actor_id = auth.uid() |
-| **Input Validation** | Pydantic v2 schemas on all endpoints |
-
-### Role Hierarchy
-
-```
-REPORTER (least) → DEVELOPER → QA → ADMIN (most)
-```
-
-| Action | REPORTER | DEVELOPER | QA | ADMIN |
-|--------|----------|-----------|-----|-------|
-| View bugs | ✅ | ✅ | ✅ | ✅ |
-| Create bugs | ✅ | ✅ | ✅ | ✅ |
-| Update own bugs | ✅ | ✅ | ✅ | ✅ |
-| Update any bug | ❌ | ✅ | ✅ | ✅ |
-| Change status | ❌ | ✅ | ✅ | ✅ |
-| Assign bugs | ❌ | ✅ | ✅ | ✅ |
-| Manage members | ❌ | ❌ | ❌ | ✅ |
-| Delete bugs | ❌ | ❌ | ❌ | ✅ |
-
-## Intelligence Engine
-
-**Zero AI. Zero LLM. Zero external APIs.**
-
-### Triage
-
-Keyword-based severity/priority suggestion with confidence scoring:
-
-```json
-POST /api/intelligence/projects/{id}/bugs/triage
-{
-  "title": "Application crashes on login",
-  "description": "Unhandled exception when user session expires...",
-  "severity": "BLOCKER",
-  "priority": "P1"
-}
-
-Response:
-{
-  "suggested_severity": "BLOCKER",
-  "suggested_priority": "P1",
-  "confidence": 0.92,
-  "reasons": ["Keyword analysis suggests BLOCKER", "Reporter severity ≥ engine suggestion"],
-  "signals": ["Detected: crash, data loss, security"]
-}
-```
-
-### Duplicate Detection
-
-PostgreSQL pg_trgm trigram similarity with Jaccard fallback:
-
-```json
-POST /api/intelligence/projects/{id}/bugs/duplicates
-{
-  "title": "Login page crashes",
-  "threshold": 0.3,
-  "limit": 5
-}
-
-Response:
-{
-  "candidates": [
-    { "bug_id": "...", "title": "App crashes on login", "similarity": 0.87, "match_type": "title_trgm" }
-  ]
-}
-```
-
-### Risk Analysis
-
-7-factor weighted scoring (0-100):
-
-| Factor | Weight | What It Measures |
-|--------|--------|-----------------|
-| Severity | 25 | Bug severity level |
-| Priority | 15 | Business priority |
-| Age | 15 | Days since creation |
-| Status Blockage | 15 | Stuck in NEW/CONFIRMED/REOPENED |
-| Reopen Count | 15 | How many times reopened |
-| Activity Staleness | 10 | Days since last update |
-| No Assignee | 5 | Unassigned = higher risk |
-
-## Database Schema
-
-11 tables with proper foreign keys, indexes, and constraints:
-
-| Table | Records | Purpose |
-|-------|---------|---------|
-| `users` | Synced from Auth | User profiles |
-| `projects` | User-created | Bug tracking projects |
-| `project_members` | Per-project | Role-based membership |
-| `components` | Per-project | Bug categorization |
-| `bugs` | Core entity | Bug reports with lifecycle |
-| `comments` | Per-bug | Discussion threads |
-| `attachments` | Per-bug | File uploads |
-| `relationships` | Cross-bug | blocks, depends_on, related_to |
-| `activity_log` | Audit trail | Every mutation logged |
-| `notifications` | Per-user | Alert system |
-| `saved_searches` | Per-user | Custom filters |
+---
 
 ## Testing
 
-### Backend Tests — 100 tests, all passing
+### Backend — 100 Tests
 
 ```bash
 cd backend
-pytest tests -v
-# ======================= 100 passed, 3 warnings in 4.15s ========================
+pytest tests/ -v
+# 100 passed in ~5s
 ```
-
-<details>
-<summary>Full test output (100 tests)</summary>
-
-```
-tests/test_bugfixes.py::TestApiErrorMapping::test_rls_permission_denied_maps_to_403 PASSED
-tests/test_bugfixes.py::TestApiErrorMapping::test_unique_violation_maps_to_409 PASSED
-tests/test_bugfixes.py::TestApiErrorMapping::test_unknown_code_maps_to_400 PASSED
-tests/test_bugfixes.py::TestCreateProject::test_create_project_handles_single_jsonb_object PASSED
-tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_by_is_422 PASSED
-tests/test_bugfixes.py::TestListBugsSortGuard::test_invalid_sort_order_is_422 PASSED
-tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_severity_is_422 PASSED
-tests/test_bugfixes.py::TestTriageInputGuard::test_invalid_priority_is_422 PASSED
-tests/test_bugfixes.py::TestTriageInputGuard::test_valid_severity_is_200 PASSED
-tests/test_comprehensive.py::TestAuthModule (3 tests) PASSED
-tests/test_comprehensive.py::TestBugLifecycle (9 tests) PASSED
-tests/test_comprehensive.py::TestTriageAlgorithm (6 tests) PASSED
-tests/test_comprehensive.py::TestJaccardSimilarity (5 tests) PASSED
-tests/test_comprehensive.py::TestRiskAnalysis (4 tests) PASSED
-tests/test_comprehensive.py::TestHelpers (2 tests) PASSED
-tests/test_comprehensive.py::TestModels (7 tests) PASSED
-tests/test_comprehensive.py::TestExceptions (6 tests) PASSED
-tests/test_comprehensive.py::TestMiddleware (1 test) PASSED
-tests/test_comprehensive.py::TestApp (3 tests) PASSED
-tests/test_comprehensive.py::TestFrontendTypesMatch (3 tests) PASSED
-tests/test_comprehensive.py::TestSupabaseClient (2 tests) PASSED
-tests/test_comprehensive.py::TestEndpointBehavior (10 tests) PASSED
-tests/test_comprehensive.py::TestSearchFilter (5 tests) PASSED
-tests/test_comprehensive.py::TestTriageScoring (5 tests) PASSED
-tests/test_graph_impact.py::TestComputeBlockingImpact (9 tests) PASSED
-tests/test_intelligence_integration.py (11 tests) PASSED
-
-======================= 100 passed, 3 warnings in 4.15s ========================
-```
-
-</details>
 
 | Category | Tests | What It Proves |
 |----------|-------|----------------|
-| Auth Module | 3 | JWT verification, ES256/RS256 support, JWKS caching |
-| Bug Lifecycle | 9 | All 7 state machine transitions validated |
-| Triage Algorithm | 11 | Keyword matching, severity/priority suggestion, input validation |
+| Auth Module | 3 | JWT verification, ES256/RS256, JWKS caching |
+| Bug Lifecycle | 9 | All 7 state transitions validated |
+| Triage Algorithm | 11 | Keyword matching, confidence, input validation |
 | Jaccard Similarity | 5 | Duplicate detection math |
-| Risk Analysis | 4 | 7-factor weighted scoring (sum=100) |
-| Graph Impact | 9 | BFS reach counting, cycle detection, critical path, fork counting |
+| Risk Analysis | 4 | 7-factor weighted scoring |
+| Graph Impact | 9 | BFS reach counting, cycle detection, critical path |
 | Models | 7 | Pydantic validation, enum completeness |
-| Exceptions | 6 | All HTTP error codes (401,403,404,409,422) |
+| Exceptions | 6 | All HTTP error codes mapped |
 | Frontend Types | 3 | Backend enums match frontend TypeScript |
-| Supabase Client | 2 | Env validation, error handling |
-| Endpoint Behavior | 10 | Auth enforcement on all protected routes |
-| Search Security | 5 | Input escaping for commas, parens, quotes, wildcards |
-| App/Middleware | 4 | FastAPI loads, middleware imports |
-| RLS Integration | 7 | Membership required, role hierarchy, triage/duplicate/risk contracts |
-| Rate Limiting / Health | 4 | 429 on budget overflow, 200 under budget, health detail shape |
+| Endpoint Behavior | 10 | Auth enforcement on protected routes |
+| Search Security | 5 | Input escaping for special characters |
 | Bug Fixes | 9 | Error mapping, sort validation, triage input guards |
+| Rate Limiting | 4 | 429 on budget overflow, health detail shape |
+| RLS Integration | 7 | Membership required, role hierarchy, contract checks |
 
-**Full test documentation:** [docs/TESTS.md](docs/TESTS.md)
-
-### Frontend Verification
+### Frontend
 
 ```bash
 cd frontend
 npx tsc --noEmit    # TypeScript: 0 errors
-npx next lint        # ESLint: 0 warnings, 0 errors
-npm run build        # Build: 15/15 pages generated
+npx next lint       # ESLint: 0 warnings
+npm run build       # Build: 15/15 pages
 ```
 
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [docs/TESTS.md](docs/TESTS.md) | Full test documentation with proof of all 100 tests |
-| [database/README.md](database/README.md) | Complete schema docs, RLS policies, state machine |
-| [docs/api-contract.md](docs/api-contract.md) | API endpoint contracts |
-| [docs/architecture.md](docs/architecture.md) | System architecture |
-
-## Deployment
-
-### Frontend (Vercel)
-
-```bash
-cd frontend
-npx vercel --prod
-# Set environment variables in Vercel dashboard:
-# NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
-# NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### Backend (Railway)
-
-```bash
-# Connect GitHub repo to Railway
-# Set environment variables:
-# SUPABASE_URL=https://xxx.supabase.co
-# SUPABASE_ANON_KEY=your-anon-key
-# SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-# CORS_ORIGINS=https://your-frontend.vercel.app
-# ALLOW_DEMO_SETUP=true  (set to false in production)
-```
-
-### CI/CD
+### CI Pipeline
 
 GitHub Actions runs on every push to `main`:
 
@@ -544,9 +451,83 @@ Lint → TypeCheck → Build → Backend Tests (100 tests)
 
 No `|| true` — real test failures block deployment.
 
-## Contributing
+---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for team workflow, branch naming, and PR process.
+## Deployment
+
+### Frontend (Vercel)
+
+Auto-deploys on push to `main`.
+
+```
+NEXT_PUBLIC_API_URL=https://project2-production-526d.up.railway.app
+NEXT_PUBLIC_SUPABASE_URL=https://qirqjgenrhhrvpogqnvf.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=***
+```
+
+### Backend (Railway)
+
+Auto-deploys on push to `main`.
+
+```
+SUPABASE_URL=https://qirqjgenrhhrvpogqnvf.supabase.co
+SUPABASE_ANON_KEY=***
+SUPABASE_SERVICE_ROLE_KEY=***
+CORS_ORIGINS=https://project-2-sigma-seven.vercel.app
+```
+
+---
+
+## Demo Account
+
+Click **⚡ Try Demo Account** on the login page — no signup needed.
+
+- Email: `demo@company.com`
+- Password: `Demo1234!`
+
+Pre-seeded with73 bugs across4 projects, relationships, comments, and activity.
+
+---
+
+## What I'd Improve With More Time
+
+| Improvement | Why |
+|-------------|-----|
+| Real-time updates (WebSocket) | Live collaboration across tabs |
+| File attachments | Attach stack traces, screenshots |
+| Email notifications | Alert on assignment, status change |
+| Integration tests against live DB | Currently uses mocked data |
+| Saved searches | Save filter combinations |
+| Project switcher | Currently uses first project |
+
+---
+
+## How It Compares
+
+| Feature | BugNexus | Typical Bug Tracker |
+|---------|----------|-------------------|
+| Bug lifecycle | 7 states, validated at app + DB level | Basic status field |
+| Access control | 35 RLS policies + 4-tier RBAC | App-level only |
+| Triage | Keyword analysis + confidence + reasoning | Manual assignment |
+| Duplicate detection | pg_trgm trigram similarity | None |
+| Risk scoring | 7-factor weighted formula | None |
+| Dependency graph | BFS + critical path analysis | Basic links |
+| Audit trail | Every mutation logged | None |
+| Testing | 100 backend tests | Basic coverage |
+| Security | JWT/JWKS + RLS + service-role isolation | Basic auth |
+
+---
+
+## Team
+
+| Role | Responsibility |
+|------|---------------|
+| Dev 1 — Security | Authentication, RBAC, RLS policies, database security |
+| Dev 2 — Backend | API endpoints, business logic, data models |
+| Dev 3 — Frontend | UI/UX, responsive design, all pages and components |
+| Dev 4 — Intelligence | Triage engine, duplicate detection, risk analysis, testing |
+
+---
 
 ## License
 
