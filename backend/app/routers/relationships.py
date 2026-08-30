@@ -19,40 +19,37 @@ GRAPH_BUG_LIMIT = 150
 def compute_blocking_impact(
     node_ids: list[str],
     edges: list[dict],
-) -> tuple[dict[str, int], dict[str, int], list[str]]:
-    """Derive blocking impact from the semantic blocking relationships.
+) -> tuple[dict[str, int], dict[str, int], list[str], int]:
+    """Derive blocking impact from 'blocks' relationships only.
 
-    Returns (blocks_count, blocked_by_count, critical_path) where:
-      - blocks_count[b]    = distinct bugs reachable downstream of b (fixing b
-                             unblocks these).
-      - blocked_by_count[b]= distinct bugs upstream that reach b.
-      - critical_path      = longest directed 'blocks' chain (ids, length >= 2),
-                             tie-broken by the root that unblocks the most bugs.
+    Returns (unblocked_count, blocked_by_count, critical_path_ids, total_blocking_edges) where:
+      - unblocked_count[b]    = distinct bugs reachable downstream of b via 'blocks' edges.
+      - blocked_by_count[b]   = distinct bugs upstream that reach b via 'blocks' edges.
+      - critical_path_ids     = longest directed 'blocks' chain (ids, length >= 2),
+                                 tie-broken by the root that unblocks the most bugs.
+      - total_blocking_edges  = count of 'blocks' edges in the visible subgraph.
 
-    A 'blocks' edge follows source -> target. A 'depends_on' edge is its
-    inverse (source depends on target, so target blocks source). `related_to`
-    has no resolution impact. Edges are only followed between *visible* ids.
+    Only 'blocks' edges (source -> target) are followed. 'depends_on' and 'related_to'
+    are ignored for impact. Edges are only followed between *visible* ids.
     Reach counts are cycle-safe. A critical path is only reported for an
     acyclic blocks graph, because a dependency cycle has no valid resolution
     order.
     """
     if not node_ids:
-        return {}, {}, []
+        return {}, {}, [], 0
 
     visible = set(node_ids)
     adj: dict[str, set[str]] = {}
     rev: dict[str, set[str]] = {}
+    blocking_edge_count = 0
     for e in edges:
-        relationship_type = e.get("relationship_type")
-        if relationship_type == "blocks":
-            s, t = e.get("source_bug_id"), e.get("target_bug_id")
-        elif relationship_type == "depends_on":
-            s, t = e.get("target_bug_id"), e.get("source_bug_id")
-        else:
+        if e.get("relationship_type") != "blocks":
             continue
+        s, t = e.get("source_bug_id"), e.get("target_bug_id")
         if s in visible and t in visible and s != t:
             adj.setdefault(s, set()).add(t)
             rev.setdefault(t, set()).add(s)
+            blocking_edge_count += 1
 
     def _reach(graph: dict[str, set[str]]) -> dict[str, int]:
         counts = {}
@@ -68,7 +65,7 @@ def compute_blocking_impact(
             counts[start] = len(reached)
         return counts
 
-    blocks_count = _reach(adj)
+    unblocked_count = _reach(adj)
     blocked_by_count = _reach(rev)
 
     indegree = {u: 0 for u in node_ids}
@@ -88,24 +85,22 @@ def compute_blocking_impact(
 
     # A cycle is a deadlock, not a resolution path; surface no misleading path.
     if len(topo) != len(node_ids):
-        return blocks_count, blocked_by_count, []
+        return unblocked_count, blocked_by_count, [], blocking_edge_count
 
     paths = {u: [u] for u in node_ids}
     for u in reversed(topo):
         choices = [[u] + paths[v] for v in sorted(adj.get(u, ()))]
         if choices:
-            # `choices` is sorted, so equal-length paths retain a stable first
-            # branch instead of depending on set iteration order.
             paths[u] = max(choices, key=len)
 
     critical = max(
         paths.values(),
-        key=lambda path: (len(path), blocks_count.get(path[0], 0), tuple(path)),
+        key=lambda path: (len(path), unblocked_count.get(path[0], 0), tuple(path)),
     )
     if len(critical) < 2:
         critical = []
 
-    return blocks_count, blocked_by_count, critical
+    return unblocked_count, blocked_by_count, critical, blocking_edge_count
 
 
 @router.get("/graph")

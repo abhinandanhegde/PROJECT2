@@ -331,7 +331,7 @@ class TestApp:
 
     def test_app_title(self):
         from app.main import app
-        assert "T2" in app.title
+        assert "BugNexus" in app.title
 
 
 # ═══════════════════════════════════════════════════════════════

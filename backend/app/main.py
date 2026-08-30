@@ -17,8 +17,8 @@ from .middleware import register_middleware
 from .ratelimit import RateLimitError, rate_limit_error_handler
 
 app = FastAPI(
-    title="T2 Bug Tracker API",
-    description="Backend API for the T2 Bug Tracker",
+    title="BugNexus API",
+    description="Backend API for BugNexus — Intelligent Bug Tracking",
     version="0.1.0",
 )
 
