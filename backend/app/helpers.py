@@ -45,6 +45,26 @@ def require_project_role(
     return role
 
 
+def require_project_role_any(
+    db, project_id: str, user_id: str, roles: set[str]
+) -> str:
+    """
+    Assert that the user is a member of the project with one of the *roles*.
+
+    Mirrors the explicit role sets enforced by the database RLS policies
+    (which don't have an implicit "QA outranks DEVELOPER" ordering), so the
+    API never lets a request through the app check that the DB then rejects.
+    """
+    role = get_user_project_role(db, project_id, user_id)
+    if role is None:
+        raise AuthorizationError("You are not a member of this project")
+    if role not in roles:
+        raise AuthorizationError(
+            f"Requires one of these roles: {', '.join(sorted(roles))}"
+        )
+    return role
+
+
 def log_activity(
     db,
     project_id: str,

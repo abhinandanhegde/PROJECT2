@@ -57,11 +57,21 @@ export default function GraphPage() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect()
-      setDimensions({ width: rect.width || 900, height: 500 })
+    // The container only exists once the graph has loaded, so a mount-time
+    // measurement would always miss it. Once rendered, track its width for
+    // the simulation and keep it in sync on resize.
+    const el = containerRef.current
+    if (!el) return
+
+    const update = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width) setDimensions((d) => ({ ...d, width: rect.width }))
     }
-  }, [])
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [loading, nodes.length])
 
   useEffect(() => {
     async function load() {

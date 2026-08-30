@@ -17,9 +17,20 @@ from supabase import Client, create_client
 # Configuration
 # ============================================================
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+# Read at call time (not import time) so the app picks up env changes
+# after .env is loaded and tests that patch os.environ behave correctly.
+
+
+def _env_url() -> str:
+    return os.getenv("SUPABASE_URL", "")
+
+
+def _env_anon_key() -> str:
+    return os.getenv("SUPABASE_ANON_KEY", "")
+
+
+def _env_service_role_key() -> str:
+    return os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
 # ============================================================
@@ -46,12 +57,14 @@ def get_service_role_client() -> Client:
     global _service_role_client
 
     if _service_role_client is None:
-        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        url = _env_url()
+        service_role_key = _env_service_role_key()
+        if not url or not service_role_key:
             raise RuntimeError(
                 "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set "
                 "for the service-role client"
             )
-        _service_role_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        _service_role_client = create_client(url, service_role_key)
 
     return _service_role_client
 
@@ -79,13 +92,13 @@ def get_user_client(access_token: str) -> Client:
     Returns:
         A Supabase client scoped to the authenticated user
     """
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    if not _env_url() or not _env_anon_key():
         raise RuntimeError(
             "SUPABASE_URL and SUPABASE_ANON_KEY must be set"
         )
 
     # Create a client with the user's JWT for RLS enforcement
-    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    client = create_client(_env_url(), _env_anon_key())
 
     # Set the user's access token so PostgREST sees their auth context
     # This ensures auth.uid() returns the correct user in RLS policies
@@ -112,9 +125,9 @@ def get_user_client_sql(access_token: str) -> tuple[str, dict]:
         Tuple of (supabase_url, headers_dict)
     """
     return (
-        SUPABASE_URL,
+        _env_url(),
         {
-            "apikey": SUPABASE_ANON_KEY,
+            "apikey": _env_anon_key(),
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         },

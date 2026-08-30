@@ -185,6 +185,17 @@ async def triage_bug(
     db, user = auth["db"], auth["user"]
     require_project_role(db, project_id, user["id"])
 
+    # Reject off-vocabulary reporter metadata instead of crashing on
+    # _SEVERITY_ORDER.index() or echoing garbage into the response.
+    if body.severity is not None and body.severity not in _SEVERITY_ORDER:
+        raise ValidationError(
+            f"Invalid severity '{body.severity}'. Must be one of: {', '.join(_SEVERITY_ORDER)}"
+        )
+    if body.priority is not None and body.priority not in _PRIORITY_ORDER:
+        raise ValidationError(
+            f"Invalid priority '{body.priority}'. Must be one of: {', '.join(_PRIORITY_ORDER)}"
+        )
+
     text = f"{body.title} {body.description or ''}"
     desc_len = len(body.description or "")
 

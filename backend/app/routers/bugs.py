@@ -14,6 +14,15 @@ from app.helpers import require_project_role, log_activity, ROLE_HIERARCHY
 
 router = APIRouter(prefix="/api", tags=["bugs"])
 
+# Columns the bug list may be sorted by — passed straight to PostgREST's
+# .order(), so anything not on this list is rejected rather than surfacing
+# as a DB error.
+ALLOWED_SORT_COLUMNS = frozenset({
+    "id", "title", "status", "severity", "priority",
+    "assignee_id", "created_at", "updated_at",
+})
+ALLOWED_SORT_ORDERS = frozenset({"asc", "desc"})
+
 
 @router.post("/projects/{project_id}/bugs", response_model=BugResponse, status_code=201)
 async def create_bug(
@@ -74,6 +83,15 @@ async def list_bugs(
     db = auth["db"]
     user = auth["user"]
     require_project_role(db, project_id, user["id"])
+
+    if sort_by not in ALLOWED_SORT_COLUMNS:
+        raise ValidationError(
+            f"Invalid sort_by '{sort_by}'. Must be one of: {', '.join(sorted(ALLOWED_SORT_COLUMNS))}"
+        )
+    if sort_order not in ALLOWED_SORT_ORDERS:
+        raise ValidationError(
+            f"Invalid sort_order '{sort_order}'. Must be one of: {', '.join(sorted(ALLOWED_SORT_ORDERS))}"
+        )
 
     query = db.table("bugs").select("*, reporter:reporter_id(display_name), assignee:assignee_id(display_name)").eq("project_id", project_id)
 
@@ -207,6 +225,11 @@ async def change_bug_status(
         raise NotFoundError("Bug not found")
 
     current = existing.data[0]
+
+    # REPORTER may only change the status of bugs they reported.
+    if role == "REPORTER" and current.get("reporter_id") != user["id"]:
+        raise AuthorizationError("REPORTER can only change status of their own bugs")
+
     current_status = current["status"]
     new_status = body.status.value
 

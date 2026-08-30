@@ -30,6 +30,18 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
         sev = b["severity"]
         bugs_by_severity[sev] = bugs_by_severity.get(sev, 0) + 1
 
+    unassigned = 0
+    if project_ids:
+        unassigned_resp = (
+            db.table("bugs")
+            .select("id")
+            .in_("project_id", project_ids)
+            .in_("status", list(open_statuses))
+            .is_("assignee_id", "null")
+            .execute()
+        )
+        unassigned = len(unassigned_resp.data or [])
+
     recent_activity_count = 0
     if project_ids:
         week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
@@ -42,6 +54,7 @@ async def dashboard_stats(auth=Depends(get_current_user_with_client)):
         "total_bugs_assigned": len(assigned_bugs),
         "open_assigned": open_assigned,
         "bugs_by_severity": bugs_by_severity,
+        "unassigned": unassigned,
         "recent_activity_count": recent_activity_count,
     }
 

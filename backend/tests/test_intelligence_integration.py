@@ -77,6 +77,7 @@ def _clear_overrides():
 
     app.dependency_overrides.clear()
     intel_limiter.limit = 30
+    intel_limiter._hits.clear()
 
 
 _TRIAGE_PAYLOAD = {

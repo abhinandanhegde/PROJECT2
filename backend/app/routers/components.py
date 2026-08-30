@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_current_user_with_client
 from app.models.components import ComponentCreate, ComponentUpdate, ComponentResponse
 from app.exceptions import NotFoundError, ValidationError
-from app.helpers import require_project_role, log_activity
+from app.helpers import require_project_role, require_project_role_any, log_activity
+
+# Matches the RLS "components_*_admin_developer" policies exactly.
+_COMPONENT_MANAGER_ROLES = {"ADMIN", "DEVELOPER"}
 
 router = APIRouter(prefix="/api", tags=["components"])
 
@@ -18,7 +21,7 @@ async def create_component(
 ):
     user = auth["user"]
     db = auth["db"]
-    require_project_role(db, project_id, user["id"], min_role="DEVELOPER")
+    require_project_role_any(db, project_id, user["id"], _COMPONENT_MANAGER_ROLES)
 
     result = db.table("components").insert({
         "project_id": project_id,
@@ -68,7 +71,7 @@ async def update_component(
 ):
     db = auth["db"]
     user = auth["user"]
-    require_project_role(db, project_id, user["id"], min_role="ADMIN")
+    require_project_role_any(db, project_id, user["id"], _COMPONENT_MANAGER_ROLES)
     updates = component.model_dump(exclude_none=True)
     if not updates:
         raise ValidationError("No fields to update")
@@ -85,7 +88,7 @@ async def delete_component(
 ):
     db = auth["db"]
     user = auth["user"]
-    require_project_role(db, project_id, user["id"], min_role="ADMIN")
+    require_project_role_any(db, project_id, user["id"], _COMPONENT_MANAGER_ROLES)
     result = db.table("components").delete().eq("id", component_id).eq("project_id", project_id).execute()
     if not result.data:
         raise NotFoundError("Component not found")

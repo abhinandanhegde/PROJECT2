@@ -129,31 +129,31 @@ CREATE POLICY "components_select"
   TO authenticated
   USING (is_project_member(project_id, auth.uid()));
 
--- ADMINs and DEVELOPERs can create components
+-- ADMINs, DEVELOPERs, and QAs can create components
 CREATE POLICY "components_insert_admin_developer"
   ON components FOR INSERT
   TO authenticated
   WITH CHECK (
-    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER')
+    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER', 'QA')
   );
 
--- ADMINs and DEVELOPERs can update components
+-- ADMINs, DEVELOPERs, and QAs can update components
 CREATE POLICY "components_update_admin_developer"
   ON components FOR UPDATE
   TO authenticated
   USING (
-    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER')
+    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER', 'QA')
   )
   WITH CHECK (
-    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER')
+    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER', 'QA')
   );
 
--- ADMINs and DEVELOPERs can delete components
+-- ADMINs, DEVELOPERs, and QAs can delete components
 CREATE POLICY "components_delete_admin_developer"
   ON components FOR DELETE
   TO authenticated
   USING (
-    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER')
+    get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER', 'QA')
   );
 
 -- ============================================================
@@ -166,24 +166,24 @@ CREATE POLICY "bugs_select"
   TO authenticated
   USING (is_project_member(project_id, auth.uid()));
 
--- REPORTERs and DEVELOPERs can create bugs
+-- REPORTERs, DEVELOPERs, and QAs can create bugs
 CREATE POLICY "bugs_insert_reporter_developer"
   ON bugs FOR INSERT
   TO authenticated
   WITH CHECK (
-    get_project_role(project_id, auth.uid()) IN ('REPORTER', 'DEVELOPER', 'ADMIN')
+    get_project_role(project_id, auth.uid()) IN ('REPORTER', 'DEVELOPER', 'QA', 'ADMIN')
     AND reporter_id = auth.uid()
   );
 
 -- REPORTER can update their own bugs (limited fields enforced in app)
--- DEVELOPERs and ADMINs can update any bug in their project
+-- DEVELOPERs, QAs, and ADMINs can update any bug in their project
 CREATE POLICY "bugs_update"
   ON bugs FOR UPDATE
   TO authenticated
   USING (
     is_project_member(project_id, auth.uid())
     AND (
-      get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER')
+      get_project_role(project_id, auth.uid()) IN ('ADMIN', 'DEVELOPER', 'QA')
       OR (get_project_role(project_id, auth.uid()) = 'REPORTER' AND reporter_id = auth.uid())
     )
   )

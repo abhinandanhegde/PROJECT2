@@ -212,9 +212,8 @@ export default function BugDetailPage({
       })
       setBug((prev) => (prev ? { ...prev, status: newStatus, resolution: resolution || null } : null))
       success(`Status changed to ${newStatus}`)
-    } catch {
-      setBug((prev) => (prev ? { ...prev, status: newStatus, resolution: resolution || null } : null))
-      success(`Status updated to ${newStatus}`)
+    } catch (err: unknown) {
+      toastError('Failed to update status', err instanceof Error ? err.message : '')
     }
   }
 

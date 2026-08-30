@@ -16,49 +16,6 @@ interface EnrichedTriageItem {
   loading: boolean
 }
 
-const fallbackBugs: Bug[] = [
-  {
-    id: 'BUG-184', project_id: 'default', title: 'Login crashes after session expires',
-    description: 'Users experience an unhandled exception on token expiry.',
-    status: 'NEW', severity: 'BLOCKER', priority: 'P1', reporter_id: 'u1',
-    reporter_name: 'Alex Johnson', assignee_id: null, assignee_name: 'Unassigned',
-    created_at: new Date(Date.now() - 7200000).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'BUG-181', project_id: 'default', title: 'API returns 500 on payment process',
-    description: 'Stripe webhook verification fails intermittently.',
-    status: 'CONFIRMED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u2',
-    reporter_name: 'Mike Ross', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
-    created_at: new Date(Date.now() - 18000000).toISOString(),
-    updated_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-  {
-    id: 'BUG-178', project_id: 'default', title: 'UI freezes on dashboard refresh',
-    description: 'Heavy SVG render blocking main thread.',
-    status: 'IN_PROGRESS', severity: 'MAJOR', priority: 'P2', reporter_id: 'u1',
-    reporter_name: 'Alex Johnson', assignee_id: 'u4', assignee_name: 'Priya Singh',
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: 'BUG-175', project_id: 'default', title: 'Email notifications not sent',
-    description: 'SMTP connection timeout on worker nodes.',
-    status: 'NEW', severity: 'NORMAL', priority: 'P2', reporter_id: 'u2',
-    reporter_name: 'Mike Ross', assignee_id: null, assignee_name: 'Unassigned',
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'BUG-143', project_id: 'default', title: 'Database connection pool exhaustion under load',
-    description: 'Max connections reached during peak hour benchmarks.',
-    status: 'RESOLVED', severity: 'CRITICAL', priority: 'P1', reporter_id: 'u3',
-    reporter_name: 'Rahul Sharma', assignee_id: 'u3', assignee_name: 'Rahul Sharma',
-    resolution: 'FIXED', created_at: new Date(Date.now() - 172800000).toISOString(),
-    updated_at: new Date(Date.now() - 120000).toISOString(),
-  },
-]
-
 function BugsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -117,7 +74,7 @@ function BugsContent() {
       ])
 
       const list = listRes?.data as Bug[] | undefined
-      setBugs(list && list.length > 0 ? list : fallbackBugs)
+      setBugs(list || [])
 
       const triageSrc = (triageSrcRes?.data as Bug[] | undefined) || []
       const topBugs = triageSrc.slice(0, 5)
@@ -148,7 +105,7 @@ function BugsContent() {
         }))
       )
     } catch {
-      setBugs(fallbackBugs)
+      setBugs([])
       setTriageItems([])
     } finally {
       setLoading(false)

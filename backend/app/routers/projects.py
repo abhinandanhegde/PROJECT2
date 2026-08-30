@@ -29,10 +29,12 @@ async def create_project(
         "p_description": project.description or "",
     }).execute()
 
-    if not result.data:
+    # The create_project RPC returns a single JSONB object (not a row list),
+    # so postgrest returns it as a dict rather than a list of dicts.
+    created = result.data
+    if not isinstance(created, dict) or not created.get("id"):
         raise ValidationError("Failed to create project")
 
-    created = result.data[0]
     project_id = created["id"]
 
     log_activity(

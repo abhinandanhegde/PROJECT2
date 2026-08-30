@@ -133,7 +133,7 @@ export default function DashboardPage() {
         setStats({
           openIssues: r.open_assigned || 0,
           p1Issues: (sev['CRITICAL'] || 0) + (sev['BLOCKER'] || 0),
-          unassigned: r.total_bugs_assigned ? Math.max(0, r.total_bugs_assigned - r.open_assigned) : 0,
+          unassigned: r.unassigned ?? 0,
           blocked: r.recent_activity_count || 0,
         })
       }
@@ -508,7 +508,7 @@ export default function DashboardPage() {
               Stale Issues
             </h2>
             <Link
-              href="/bugs?sort=stale"
+              href="/bugs?sort_by=updated_at&sort_order=asc"
               className="text-xs font-semibold text-orange-600 dark:text-orange-400 hover:underline"
             >
               View all
