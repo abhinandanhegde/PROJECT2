@@ -340,7 +340,7 @@ export default function DashboardPage() {
                 ))
               ) : triageItems.length === 0 ? (
                 <div className="text-center py-8 text-xs text-stone-400">
-                  No issues found. Create your first bug to see AI triage suggestions.
+                  No issues found. Create your first bug to see triage suggestions.
                 </div>
               ) : (
                 triageItems.map((item) => (

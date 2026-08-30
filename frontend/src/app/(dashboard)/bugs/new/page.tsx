@@ -321,7 +321,7 @@ export default function NewBugPage() {
               </p>
             </div>
 
-            {/* AI / Heuristic Triage Assistant Card */}
+            {/* Triage Assistant Card */}
             {triageSuggestion ? (
               <div className="p-4 rounded-xl bg-orange-50/80 dark:bg-orange-950/40 border border-orange-200/80 dark:border-orange-900/60 transition-all">
                 <div className="flex items-center justify-between mb-2">
