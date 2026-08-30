@@ -384,3 +384,167 @@ class TestSupabaseClient:
             with patch("app.supabase_client._service_role_client", None):
                 with pytest.raises(RuntimeError):
                     get_service_role_client()
+
+
+# ═══════════════════════════════════════════════════════════════
+# § 12 — FastAPI Endpoint Behavior Tests (TestClient)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestEndpointBehavior:
+    """Hit real FastAPI endpoints to verify auth enforcement and response shapes."""
+
+    @pytest.fixture()
+    def client(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_health_returns_200(self, client):
+        """GET /health must return {status: ok}."""
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_health_detail_returns_uptime(self, client):
+        """GET /health/detail must include uptime_seconds."""
+        resp = client.get("/health/detail")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert "uptime_seconds" in body
+        assert body["uptime_seconds"] >= 0
+
+    def test_projects_requires_auth(self, client):
+        """GET /api/projects without token must return 401."""
+        resp = client.get("/api/projects")
+        assert resp.status_code == 401
+
+    def test_bugs_requires_auth(self, client):
+        """GET /api/projects/x/bugs without token must return 401."""
+        resp = client.get("/api/projects/fake-id/bugs")
+        assert resp.status_code == 401
+
+    def test_dashboard_stats_requires_auth(self, client):
+        """GET /api/dashboard/stats without token must return 401."""
+        resp = client.get("/api/dashboard/stats")
+        assert resp.status_code == 401
+
+    def test_search_requires_auth(self, client):
+        """GET /api/bugs/search without token must return 401."""
+        resp = client.get("/api/bugs/search?q=test")
+        assert resp.status_code == 401
+
+    def test_auth_me_requires_auth(self, client):
+        """GET /api/auth/me without token must return 401."""
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 401
+
+    def test_invalid_token_returns_401(self, client):
+        """Bearer garbage-token must return 401, not 500."""
+        resp = client.get(
+            "/api/projects",
+            headers={"Authorization": "Bearer invalid.jwt.token"},
+        )
+        assert resp.status_code == 401
+
+    def test_create_project_requires_auth(self, client):
+        """POST /api/projects without token must return 401."""
+        resp = client.post(
+            "/api/projects",
+            json={"name": "Test"},
+        )
+        assert resp.status_code == 401
+
+    def test_intelligence_triage_requires_auth(self, client):
+        """POST /api/intelligence/projects/x/bugs/triage without token → 401."""
+        resp = client.post(
+            "/api/intelligence/projects/fake-id/bugs/triage",
+            json={"title": "Test"},
+        )
+        assert resp.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════
+# § 13 — Search Filter Security Tests
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestSearchFilter:
+    """Verify _or_search_filter escapes user input safely."""
+
+    def test_comma_is_escaped(self):
+        from app.routers.bugs import _or_search_filter
+        result = _or_search_filter("foo,bar")
+        assert "\\," in result
+
+    def test_parens_are_escaped(self):
+        from app.routers.bugs import _or_search_filter
+        result = _or_search_filter("foo(bar)")
+        assert "\\(" in result
+        assert "\\)" in result
+
+    def test_quotes_are_escaped(self):
+        from app.routers.bugs import _or_search_filter
+        result = _or_search_filter('say "hello"')
+        assert '\\"' in result
+
+    def test_ilike_wildcards_are_escaped(self):
+        from app.routers.bugs import _or_search_filter
+        result = _or_search_filter("100%")
+        assert "\\%" in result
+
+    def test_output_has_title_and_description(self):
+        from app.routers.bugs import _or_search_filter
+        result = _or_search_filter("test")
+        assert "title.ilike" in result
+        assert "description.ilike" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# § 14 — Triage Suggestion Scoring Tests
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestTriageScoring:
+    """Verify triage keyword matching is deterministic and correct."""
+
+    def test_security_keyword_suggests_high_severity(self):
+        from app.routers.intelligence import _count_keyword_matches, _SEVERITY_KEYWORDS
+        matches = _count_keyword_matches(
+            "Security vulnerability in auth module allows bypass",
+            _SEVERITY_KEYWORDS,
+        )
+        assert "BLOCKER" in matches or "CRITICAL" in matches
+
+    def test_production_down_is_blocker(self):
+        from app.routers.intelligence import _count_keyword_matches, _SEVERITY_KEYWORDS
+        matches = _count_keyword_matches(
+            "Production system is down, service unavailable",
+            _SEVERITY_KEYWORDS,
+        )
+        assert "BLOCKER" in matches
+
+    def test_cosmetic_is_minor(self):
+        from app.routers.intelligence import _count_keyword_matches, _SEVERITY_KEYWORDS
+        matches = _count_keyword_matches(
+            "Cosmetic issue with button alignment",
+            _SEVERITY_KEYWORDS,
+        )
+        assert "MINOR" in matches
+
+    def test_immediate_keyword_suggests_p1(self):
+        from app.routers.intelligence import _count_keyword_matches, _PRIORITY_KEYWORDS
+        matches = _count_keyword_matches(
+            "Immediate fix required for security",
+            _PRIORITY_KEYWORDS,
+        )
+        assert "P1" in matches
+
+    def test_suggestion_keyword_suggests_p5(self):
+        from app.routers.intelligence import _count_keyword_matches, _PRIORITY_KEYWORDS
+        matches = _count_keyword_matches(
+            "Minor suggestion for formatting",
+            _PRIORITY_KEYWORDS,
+        )
+        assert "P5" in matches
