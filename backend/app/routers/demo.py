@@ -364,6 +364,8 @@ def _seed_all(db, user_id: str) -> dict:
 @router.post("/setup")
 async def setup_demo_account(body: DemoSetupRequest):
     """One-click demo. Handles every edge case."""
+    if os.getenv("ALLOW_DEMO_SETUP", "true").lower() != "true":
+        raise HTTPException(status_code=404, detail="Demo not available")
     db = get_service_role_client()
     user_id = None
 
