@@ -48,6 +48,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
     { label: 'Issues', href: '/bugs', icon: IssuesIcon },
     { label: 'Graph', href: '/graph', icon: GraphIcon },
+    { label: 'Intelligence', href: '/intelligence', icon: AnalyticsIcon },
     { label: 'Analytics', href: '/analytics', icon: AnalyticsIcon },
     { label: 'Reports', href: '/reports', icon: ReportsIcon },
     { label: 'Projects', href: '/projects', icon: ProjectsIcon },
