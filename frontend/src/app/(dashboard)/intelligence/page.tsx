@@ -12,7 +12,11 @@ interface IntelState {
   duplicates: Map<string, DuplicateResult>
   risks: Map<string, RiskResult>
   impact: { criticalPath: string[]; totalBlocking: number; nodes: Record<string, { unblocked: number; blockedBy: number; isCritical: boolean }> }
-  loading: boolean
+  loadingBugs: boolean
+  loadingImpact: boolean
+  triageDone: boolean
+  dupsDone: boolean
+  riskDone: boolean
 }
 
 export default function IntelligencePage() {
@@ -22,126 +26,110 @@ export default function IntelligencePage() {
     duplicates: new Map(),
     risks: new Map(),
     impact: { criticalPath: [], totalBlocking: 0, nodes: {} },
-    loading: true,
+    loadingBugs: true,
+    loadingImpact: true,
+    triageDone: false,
+    dupsDone: false,
+    riskDone: false,
   })
 
   const loadAll = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true }))
-
+    // Phase 1: Get project ID (fast — single query)
+    let projectId = ''
     try {
-      const [projRes, graphRes] = await Promise.allSettled([
-        api.getProjects(),
-        api.getGraph(),
-      ])
+      const projRes = await api.getProjects()
+      const projs = (projRes as { data?: { id: string }[] })?.data || []
+      if (projs.length === 0) { setState((s) => ({ ...s, loadingBugs: false })); return }
+      projectId = projs[0].id
+    } catch {
+      setState((s) => ({ ...s, loadingBugs: false }))
+      return
+    }
 
-      const projs = (projRes.status === 'fulfilled' ? (projRes.value as { data?: { id: string }[] })?.data : []) || []
-      if (projs.length === 0) { setState((s) => ({ ...s, loading: false })); return }
-      const projectId = projs[0].id
+    // Phase 2: Get bugs (1 call) — render immediately
+    let bugs: Bug[] = []
+    try {
+      const bugsRes = await api.getBugs(projectId, { per_page: '100' })
+      bugs = (bugsRes as { data?: Bug[] })?.data || []
+    } catch {
+      // continue with empty
+    }
 
-      // Extract impact from graph
-      const graphData = graphRes.status === 'fulfilled' ? (graphRes.value as Record<string, unknown>) : null
-      const impactInfo = {
-        criticalPath: (graphData?.impact as Record<string, unknown>)?.critical_path_ids as string[] || [],
-        totalBlocking: (graphData?.impact as Record<string, unknown>)?.total_blocking_edges as number || 0,
-        nodes: {} as Record<string, { unblocked: number; blockedBy: number; isCritical: boolean }>,
-      }
-      const graphNodes = (graphData?.data as Record<string, unknown>)?.nodes as Array<Record<string, unknown>> | undefined
+    // RENDER IMMEDIATELY — show bugs, empty intelligence cards
+    setState((s) => ({ ...s, bugs, loadingBugs: false }))
+
+    if (bugs.length === 0) return
+
+    // Phase 3: Fire ALL intelligence in parallel (5 triage + 5 dups + 5 risk)
+    const topBugs = bugs.slice(0, 5)
+
+    const allTriage = Promise.allSettled(
+      topBugs.map((b) =>
+        api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
+      )
+    )
+    const allDups = Promise.allSettled(
+      topBugs.map((b) =>
+        api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
+      )
+    )
+    const allRisk = Promise.allSettled(
+      topBugs.map((b) => api.analyzeRisk(projectId, b.id))
+    )
+
+    // Render each as it arrives
+    allTriage.then((results) => {
+      const m = new Map<string, TriageResult>()
+      topBugs.forEach((b, i) => {
+        if (results[i].status === 'fulfilled') m.set(b.id, results[i].value as TriageResult)
+      })
+      setState((s) => ({ ...s, triage: m, triageDone: true }))
+    })
+
+    allDups.then((results) => {
+      const m = new Map<string, DuplicateResult>()
+      topBugs.forEach((b, i) => {
+        if (results[i].status === 'fulfilled') {
+          const d = results[i].value as DuplicateResult
+          if (d.candidates && d.candidates.length > 0) m.set(b.id, d)
+        }
+      })
+      setState((s) => ({ ...s, duplicates: m, dupsDone: true }))
+    })
+
+    allRisk.then((results) => {
+      const m = new Map<string, RiskResult>()
+      topBugs.forEach((b, i) => {
+        if (results[i].status === 'fulfilled') m.set(b.id, results[i].value as RiskResult)
+      })
+      setState((s) => ({ ...s, risks: m, riskDone: true }))
+    })
+
+    // Phase 4: Load graph impact IN BACKGROUND (non-blocking, after page renders)
+    api.getGraph().then((graphData) => {
+      const g = graphData as Record<string, unknown>
+      const impactObj = g?.impact as Record<string, unknown> | undefined
+      const graphNodes = (g?.data as Record<string, unknown>)?.nodes as Array<Record<string, unknown>> | undefined
+      const criticalPathIds = (impactObj?.critical_path_ids as string[]) || []
+      const totalBlocking = (impactObj?.total_blocking_edges as number) || 0
+      const criticalSet = new Set(criticalPathIds)
+      const nodes: Record<string, { unblocked: number; blockedBy: number; isCritical: boolean }> = {}
       if (graphNodes) {
-        const criticalSet = new Set(impactInfo.criticalPath)
         for (const n of graphNodes) {
-          impactInfo.nodes[n.id as string] = {
+          nodes[n.id as string] = {
             unblocked: (n.unblocked_count as number) || 0,
             blockedBy: (n.blocked_by_count as number) || 0,
             isCritical: criticalSet.has(n.id as string),
           }
         }
       }
-
-      // Get all bugs (1 call)
-      const bugsRes = await api.getBugs(projectId, { per_page: '100' }).catch(() => null)
-      const bugs = (bugsRes?.data as Bug[]) || []
-
-      if (bugs.length === 0) {
-        setState({ bugs: [], triage: new Map(), duplicates: new Map(), risks: new Map(), impact: impactInfo, loading: false })
-        return
-      }
-
-      // Show bugs + impact IMMEDIATELY (no waiting)
-      setState({ bugs, triage: new Map(), duplicates: new Map(), risks: new Map(), impact: impactInfo, loading: false })
-
-      const topBugs = bugs.slice(0, 5)
-
-      // Fire all 15 calls simultaneously — but render each section as it arrives
-      const allTriage = Promise.allSettled(
-        topBugs.map((b) =>
-          api.triage(projectId, { title: b.title, description: b.description, severity: b.severity, priority: b.priority })
-        )
-      )
-      const allDups = Promise.allSettled(
-        topBugs.map((b) =>
-          api.findDuplicates(projectId, { title: b.title, description: b.description, threshold: 0.3, limit: 3 })
-        )
-      )
-      const allRisk = Promise.allSettled(
-        topBugs.map((b) =>
-          api.analyzeRisk(projectId, b.id)
-        )
-      )
-
-      // Triage arrives first (fastest) — render immediately
-      allTriage.then((results) => {
-        const triageMap = new Map<string, TriageResult>()
-        topBugs.forEach((b, i) => {
-          if (results[i].status === 'fulfilled') triageMap.set(b.id, results[i].value as TriageResult)
-        })
-        setState((s) => ({ ...s, triage: triageMap }))
-      })
-
-      // Duplicates arrive next — render immediately
-      allDups.then((results) => {
-        const dupMap = new Map<string, DuplicateResult>()
-        topBugs.forEach((b, i) => {
-          if (results[i].status === 'fulfilled') {
-            const d = results[i].value as DuplicateResult
-            if (d.candidates && d.candidates.length > 0) dupMap.set(b.id, d)
-          }
-        })
-        setState((s) => ({ ...s, duplicates: dupMap }))
-      })
-
-      // Risk arrives last — render immediately
-      allRisk.then((results) => {
-        const riskMap = new Map<string, RiskResult>()
-        topBugs.forEach((b, i) => {
-          if (results[i].status === 'fulfilled') riskMap.set(b.id, results[i].value as RiskResult)
-        })
-        setState((s) => ({ ...s, risks: riskMap }))
-      })
-    } catch {
-      setState((s) => ({ ...s, loading: false }))
-    }
+      setState((s) => ({ ...s, impact: { criticalPath: criticalPathIds, totalBlocking, nodes }, loadingImpact: false }))
+    }).catch(() => {
+      setState((s) => ({ ...s, loadingImpact: false }))
+    })
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
-
-  // Show header + impact immediately, even while bugs load
-  if (state.loading && state.bugs.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
-            Intelligence Center
-          </h1>
-          <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">Loading...</p>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-48 bg-stone-100 dark:bg-stone-800 rounded-2xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   const bugsWithTriage = state.bugs.filter((b) => state.triage.has(b.id))
   const bugsWithDups = state.bugs.filter((b) => state.duplicates.has(b.id))
@@ -167,18 +155,18 @@ export default function IntelligencePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header — renders instantly */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white">
-          🧠 Intelligence Center
+          Intelligence Center
         </h1>
         <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
           Deterministic triage, duplicate detection, risk analysis — zero AI, instant results
         </p>
       </div>
 
-      {/* Impact Summary Bar */}
-      {state.impact.totalBlocking > 0 && (
+      {/* Impact Summary Bar — loads in background */}
+      {!state.loadingImpact && state.impact.totalBlocking > 0 && (
         <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 rounded-2xl p-4 border border-orange-200 dark:border-orange-900/50">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm">⚡</span>
@@ -210,21 +198,29 @@ export default function IntelligencePage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* ── Triage Queue ── */}
+        {/* ── Smart Triage ── */}
         <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
           <div className="p-5 pb-3 border-b border-stone-100 dark:border-stone-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-stone-900 dark:text-white">🎯 Smart Triage</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
-                  {bugsWithTriage.length}
-                </span>
+                {!state.triageDone ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 dark:bg-stone-800 text-stone-400 animate-pulse">
+                    analyzing…
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400">
+                    {bugsWithTriage.length}
+                  </span>
+                )}
               </div>
               <Link href="/bugs" className="text-[10px] text-orange-600 dark:text-orange-400 hover:underline">View all →</Link>
             </div>
           </div>
           <div className="divide-y divide-stone-100 dark:divide-stone-800 max-h-[500px] overflow-y-auto">
-            {bugsWithTriage.length === 0 ? (
+            {!state.triageDone ? (
+              <div className="p-8 text-center text-xs text-stone-400 animate-pulse">Analyzing issues…</div>
+            ) : bugsWithTriage.length === 0 ? (
               <div className="p-8 text-center text-xs text-stone-400">No triage data</div>
             ) : (
               bugsWithTriage.map((bug) => {
@@ -271,15 +267,23 @@ export default function IntelligencePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-stone-900 dark:text-white">🔍 Duplicate Detection</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400">
-                  {bugsWithDups.length}
-                </span>
+                {!state.dupsDone ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 dark:bg-stone-800 text-stone-400 animate-pulse">
+                    analyzing…
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400">
+                    {bugsWithDups.length}
+                  </span>
+                )}
               </div>
               <span className="text-[10px] text-stone-400">pg_trgm + Jaccard</span>
             </div>
           </div>
           <div className="divide-y divide-stone-100 dark:divide-stone-800 max-h-[500px] overflow-y-auto">
-            {bugsWithDups.length === 0 ? (
+            {!state.dupsDone ? (
+              <div className="p-8 text-center text-xs text-stone-400 animate-pulse">Scanning for duplicates…</div>
+            ) : bugsWithDups.length === 0 ? (
               <div className="p-8 text-center text-xs text-stone-400">No duplicates found</div>
             ) : (
               bugsWithDups.map((bug) => {
@@ -315,15 +319,23 @@ export default function IntelligencePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-stone-900 dark:text-white">⚠️ Risk Analysis</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400">
-                  {bugsWithRisk.length}
-                </span>
+                {!state.riskDone ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 dark:bg-stone-800 text-stone-400 animate-pulse">
+                    analyzing…
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400">
+                    {bugsWithRisk.length}
+                  </span>
+                )}
               </div>
               <span className="text-[10px] text-stone-400">7-factor scoring</span>
             </div>
           </div>
           <div className="divide-y divide-stone-100 dark:divide-stone-800 max-h-[500px] overflow-y-auto">
-            {bugsWithRisk.length === 0 ? (
+            {!state.riskDone ? (
+              <div className="p-8 text-center text-xs text-stone-400 animate-pulse">Calculating risk scores…</div>
+            ) : bugsWithRisk.length === 0 ? (
               <div className="p-8 text-center text-xs text-stone-400">No risk data</div>
             ) : (
               bugsWithRisk.map((bug) => {
@@ -370,15 +382,23 @@ export default function IntelligencePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-stone-900 dark:text-white">🔗 Dependency Impact</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400">
-                  {Object.keys(state.impact.nodes).length}
-                </span>
+                {state.loadingImpact ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 dark:bg-stone-800 text-stone-400 animate-pulse">
+                    loading…
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400">
+                    {Object.keys(state.impact.nodes).length}
+                  </span>
+                )}
               </div>
               <Link href="/graph" className="text-[10px] text-orange-600 dark:text-orange-400 hover:underline">View graph →</Link>
             </div>
           </div>
           <div className="divide-y divide-stone-100 dark:divide-stone-800 max-h-[500px] overflow-y-auto">
-            {Object.keys(state.impact.nodes).length === 0 ? (
+            {state.loadingImpact ? (
+              <div className="p-8 text-center text-xs text-stone-400 animate-pulse">Loading dependency data…</div>
+            ) : Object.keys(state.impact.nodes).length === 0 ? (
               <div className="p-8 text-center text-xs text-stone-400">No dependency data</div>
             ) : (
               Object.entries(state.impact.nodes)
