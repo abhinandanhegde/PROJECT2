@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     "BugNexus: a production-grade bug tracker with lifecycle state control, per-project access, and deterministic, instant intelligence",
 };
 
-const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark';document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t===null?true:t==='dark';document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
 
 export default function RootLayout({
   children,

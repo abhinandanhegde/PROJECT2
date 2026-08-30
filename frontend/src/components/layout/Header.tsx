@@ -11,7 +11,6 @@ import {
   MenuIcon,
 } from '@/components/ui/Icons'
 import { supabase } from '@/lib/supabase'
-import { useToast } from '@/components/ui/Toast'
 
 interface HeaderProps {
   onOpenMobileSidebar?: () => void
@@ -19,13 +18,13 @@ interface HeaderProps {
 
 export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const router = useRouter()
-  const { success } = useToast()
   const [query, setQuery] = useState('')
   const [userName, setUserName] = useState('Alex Johnson')
   const [userAvatar, setUserAvatar] = useState('')
   const [userEmail, setUserEmail] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
+  const [darkMode, setDarkMode] = useState(true)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -42,8 +41,8 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     })
 
     const stored = localStorage.getItem('theme')
-    // Default to light theme. Only go dark if user explicitly chose dark.
-    const isDark = stored === 'dark'
+    // Default to dark theme if no preference stored
+    const isDark = stored === null ? true : stored === 'dark'
     setDarkMode(isDark)
     document.documentElement.classList.toggle('dark', isDark)
 
@@ -75,7 +74,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    success('Logged out successfully')
     router.push('/login')
   }
 
@@ -127,9 +125,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
 
         {/* Help Icon */}
         <button
-          onClick={() =>
-            success('BugNexus Help', 'Press ⌘K to search or click any bug to view triage details.')
-          }
+          onClick={() => setShowHelp(true)}
           className="p-2 rounded-xl text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
         >
           <HelpIcon className="w-4 h-4" />
@@ -208,6 +204,74 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
           )}
         </div>
       </div>
+
+      {/* Help Panel Modal */}
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowHelp(false)}>
+          <div
+            className="bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-[#eee9e2] dark:border-stone-800 w-full max-w-md mx-4 p-6 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-stone-900 dark:text-white">Welcome to BugNexus</h2>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm text-stone-600 dark:text-stone-400">
+              <div className="flex items-start gap-3">
+                <span className="text-orange-500 font-bold mt-0.5">1</span>
+                <div>
+                  <span className="font-semibold text-stone-900 dark:text-white">Try the demo</span>
+                  <p className="text-xs text-stone-500 dark:text-stone-500 mt-0.5">Click &quot;⚡ Try Demo Account&quot; on the login page for instant access with 73 seeded bugs.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-orange-500 font-bold mt-0.5">2</span>
+                <div>
+                  <span className="font-semibold text-stone-900 dark:text-white">Explore the dashboard</span>
+                  <p className="text-xs text-stone-500 dark:text-stone-500 mt-0.5">See real-time stats, triage queue with confidence scores, and recent activity.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-orange-500 font-bold mt-0.5">3</span>
+                <div>
+                  <span className="font-semibold text-stone-900 dark:text-white">Discover the graph</span>
+                  <p className="text-xs text-stone-500 dark:text-stone-500 mt-0.5">Click any node to see &quot;Unblocks X downstream bugs&quot; and the critical path.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-orange-500 font-bold mt-0.5">4</span>
+                <div>
+                  <span className="font-semibold text-stone-900 dark:text-white">Search instantly</span>
+                  <p className="text-xs text-stone-500 dark:text-stone-500 mt-0.5">Press <kbd className="px-1 py-0.5 text-[10px] font-mono bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded">⌘K</kbd> to search any bug across all projects.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-orange-500 font-bold mt-0.5">5</span>
+                <div>
+                  <span className="font-semibold text-stone-900 dark:text-white">Check reports</span>
+                  <p className="text-xs text-stone-500 dark:text-stone-500 mt-0.5">View component health, project risk analysis, and team activity.</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowHelp(false)
+                router.push('/login')
+              }}
+              className="mt-5 w-full py-2.5 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white text-sm font-semibold shadow-md shadow-orange-500/20 transition-colors"
+            >
+              Try Demo Account →
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
