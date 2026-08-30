@@ -165,6 +165,29 @@ export default function IntelligencePage() {
         </p>
       </div>
 
+      {/* Skeleton loading — shows while bugs load (<1s) */}
+      {state.loadingBugs && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs p-5 animate-pulse">
+              <div className="flex items-center justify-between mb-4">
+                <div className="h-4 w-32 bg-stone-200 dark:bg-stone-800 rounded" />
+                <div className="h-3 w-16 bg-stone-200 dark:bg-stone-800 rounded" />
+              </div>
+              <div className="space-y-3">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-stone-200 dark:bg-stone-800" />
+                    <div className="h-3 flex-1 bg-stone-200 dark:bg-stone-800 rounded" />
+                    <div className="h-3 w-10 bg-stone-200 dark:bg-stone-800 rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Impact Summary Bar — loads in background */}
       {!state.loadingImpact && state.impact.totalBlocking > 0 && (
         <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 rounded-2xl p-4 border border-orange-200 dark:border-orange-900/50">
@@ -197,6 +220,7 @@ export default function IntelligencePage() {
         </div>
       )}
 
+      {!state.loadingBugs && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ── Smart Triage ── */}
         <div className="bg-white dark:bg-stone-900 rounded-2xl border border-[#eee9e2] dark:border-stone-800 shadow-2xs">
@@ -439,6 +463,7 @@ export default function IntelligencePage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }
